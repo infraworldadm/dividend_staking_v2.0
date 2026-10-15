@@ -22,7 +22,7 @@ export function HowItWorksCard() {
         </li>
         <li>
           <span>
-            <b>Claim within 30 days</b>After the lock, withdraw within 30 days to get rewards too — later, principal only.
+            <b>Claim every month, within 30 days</b>Each month’s reward has its own 30-day window — also on 6 and 12-month locks.
           </span>
         </li>
       </ol>

@@ -123,6 +123,29 @@ export function StakePanel({
         </div>
       </div>
 
+      {periods > 1 ? (
+        <div className="claimplan">
+          <div className="flex items-center gap-2">
+            <span className="st st-claim">Claim every month</span>
+            <b className="text-[0.86rem]">Not only at the end of your {periods}-month lock</b>
+          </div>
+          <p>
+            Each month’s reward must be claimed within {CLAIM_BUFFER_DAYS} days after that month ends. Rewards you don’t
+            claim in time are forfeited, even while your stake is still locked. Your principal is never affected.
+          </p>
+          <ul>
+            {Array.from({ length: periods }, (_, k) => cycleAt(ny, nm - 1 + k)).map((c) => (
+              <li key={c.key}>
+                <span>{c.label} reward</span>
+                <span className="mono">
+                  claim {fmtDate(c.end)} → {fmtDate(c.claimUntil)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="proj">
         <div className="row">
           <span>Your share of {next.label.split(" ")[0]} (so far)</span>
@@ -144,8 +167,9 @@ export function StakePanel({
       <label className="check">
         <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
         <span>
-          I understand rewards depend on network fees (no fixed APR), and that rewards not claimed within{" "}
-          {CLAIM_BUFFER_DAYS} days are forfeited.
+          I understand rewards depend on network fees (no fixed APR), and that{" "}
+          <b className="font-medium text-[var(--t1)]">each month’s reward must be claimed within {CLAIM_BUFFER_DAYS} days after that month ends</b>{" "}
+          — otherwise it is forfeited.
         </span>
       </label>
 

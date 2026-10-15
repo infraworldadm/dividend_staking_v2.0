@@ -117,6 +117,13 @@ export function StakingPage() {
       graceCountdown: formatCountdown(Math.max(0, graceEnd - nowSec)),
       lockCountdown: formatCountdown(Math.max(0, lockEnd - nowSec)),
       claimable: formatToken(s.positionPending[i] ?? 0n, 2),
+      nextClaim:
+        Number(p.periods) > 1 && status !== "grace" && status !== "graceOver"
+          ? (() => {
+              const m = status === "queued" ? cycleOfEpoch(from) : curCycle;
+              return `${m.label.split(" ")[0]} reward: claim ${fmtDate(m.end)} → ${fmtDate(m.claimUntil)}, then every month`;
+            })()
+          : undefined,
     };
   });
   const sumBy = (st: PositionStatus) =>
@@ -350,10 +357,16 @@ export function StakingPage() {
       before: () => setTab("claim"),
       title: "Claim after each month",
       body: (
-        <p>
-          When a month closes, your reward appears here. You have <b>{CLAIM_BUFFER_DAYS} days to claim</b>. Rewards not
-          claimed in time are <b>forfeited</b>.
-        </p>
+        <>
+          <p>
+            When a month closes, that month’s reward appears here. You have <b>{CLAIM_BUFFER_DAYS} days to claim</b> it.
+            Rewards not claimed in time are <b>forfeited</b>.
+          </p>
+          <p>
+            <b>On longer locks (6 or 12 months) claim every month</b> — not just at the end. Each month’s reward has its
+            own 30-day window, even while your stake is still locked.
+          </p>
+        </>
       ),
     },
     {

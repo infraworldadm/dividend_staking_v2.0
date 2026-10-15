@@ -153,6 +153,8 @@ export type PositionView = {
   graceCountdown: string;
   lockCountdown: string;
   claimable: string;
+  /** for multi-month positions: e.g. "Nov reward: claim 1 Dec → 31 Dec" */
+  nextClaim?: string;
 };
 
 /** "My stakes": totals + one card per open position, each with its own withdraw. */
@@ -232,6 +234,12 @@ export function PositionsPanel(p: {
               <div className="grid"><span className="text-[var(--t3)]">Lock ends</span><span className="font-medium">{x.lockEnd}</span></div>
               <div className="grid"><span className="text-[var(--t3)]">Withdraw with rewards by</span><span className="font-medium">{x.graceEnd}</span></div>
             </div>
+            {x.nextClaim && !ended ? (
+              <div className="claimnote">
+                <span className="st st-claim">Claim monthly</span>
+                <span>{x.nextClaim}</span>
+              </div>
+            ) : null}
             {ended ? (
               <button className="btn btn-b btn-sm w-full" onClick={() => p.onWithdraw(x.id)} disabled={p.busy}>
                 {p.busy
