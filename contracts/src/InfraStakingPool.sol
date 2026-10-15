@@ -23,9 +23,14 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  *
  *  Staking
  *    - A stake made during month M becomes ACTIVE at the start of month M+1.
- *    - Principal is locked for `periods` full months (1..12).
- *    - After the lock ends the stake keeps earning every month until the user
- *      calls withdraw(). One active stake per wallet.
+ *    - It earns ONLY for its `periods` lock months (1..12): months
+ *      activeFrom .. activeFrom + periods - 1. One stake per wallet.
+ *    - When the lock ends the stake STOPS earning. The staker then has a 30-day
+ *      grace period (same as the claim window) to claim and withdraw().
+ *    - If the staker has not withdrawn after the grace period, anyone (e.g. an
+ *      admin/keeper script) can call releaseStake(user) / releaseStakes(users):
+ *      unclaimed rewards are forfeited (they roll into a later month's pool via
+ *      rolloverExpired) and the principal is sent back to the staker's own wallet.
  *
  *  Rewards (no APR is promised)
  *    - Every reAED that arrives during month M (from the dividend pool or any
@@ -49,7 +54,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  *  Scalability
  *    No loops over users. Per-month totals are computed from:
  *      activeAmount (principal earning), scheduledActivation (stakes starting
- *      next month) and epochWeightDeduction (weight removed by mid-month exits).
+ *      that month) and scheduledDeactivation (locks ending that month).
  *    Loops only run over months (since last sync / since a user's last claim).
  */
 contract InfraStakingPool is
@@ -74,13 +79,11 @@ contract InfraStakingPool is
 
     /// @notice Everything the contract knows about one wallet's stake.
     struct UserInfo {
-        uint256 amount; // principal of the latest stake (kept after exit for reward accounting)
+        uint256 amount; // principal currently staked (0 = no stake)
         uint64 stakedAt; // timestamp when stake() was called
         uint64 periods; // lock length in months chosen at stake time
         uint64 activeFrom; // first epoch this stake earns in (month after staking)
-        uint64 lockEnd; // timestamp after which withdraw() is allowed (start of month activeFrom+periods)
-        uint64 exitEpoch; // epoch in which withdraw() happened; 0 = stake still active
-        uint64 exitTime; // timestamp of withdraw(); weight in exitEpoch counts up to this moment
+        uint64 lockEnd; // earning stops & withdraw allowed from here (start of month activeFrom+periods)
         uint64 lastSettledEpoch; // all epochs <= this are already paid or expired for this user
         uint256 totalClaimed; // lifetime rewards paid to this wallet
         uint256 totalExpired; // lifetime rewards this wallet missed (claim window passed)
@@ -110,8 +113,8 @@ contract InfraStakingPool is
     /// @notice epoch => activeAmount × epoch length, snapshotted when the epoch starts.
     mapping(uint256 => uint256) public epochBaseWeight;
 
-    /// @notice epoch => weight removed because stakers withdrew during that epoch.
-    mapping(uint256 => uint256) public epochWeightDeduction;
+    /// @notice epoch => principal that stops earning at the beginning of that epoch (lock ended).
+    mapping(uint256 => uint256) public scheduledDeactivation;
 
     /// @notice epoch => reward pool (reAED) to be split among that epoch's stakers.
     mapping(uint256 => uint256) public epochReward;
@@ -137,8 +140,8 @@ contract InfraStakingPool is
 
     /// @notice A wallet staked `amount`, earning from epoch `activeFrom`, withdrawable after `lockEnd`.
     event Staked(address indexed user, uint256 amount, uint256 periods, uint256 activeFrom, uint256 lockEnd);
-    /// @notice A wallet withdrew its full principal during `epoch`.
-    event Withdrawn(address indexed user, uint256 amount, uint256 epoch);
+    /// @notice A wallet's full principal was returned to it during `epoch` (by itself or a releaser).
+    event Withdrawn(address indexed user, uint256 amount, uint256 epoch, address indexed caller);
     /// @notice A wallet received `amount` rewards covering epochs fromEpoch..toEpoch.
     event Claimed(address indexed user, uint256 amount, uint256 fromEpoch, uint256 toEpoch);
     /// @notice A wallet's rewards from closed months expired (claim window passed).
@@ -228,9 +231,8 @@ contract InfraStakingPool is
      *
      * Rules:
      *  - Earning starts at the beginning of NEXT month (activeFrom = current + 1).
-     *  - lockEnd = start of month (activeFrom + periods), i.e. after `periods` full months.
-     *  - One active stake per wallet. After withdraw(), the wallet can stake again
-     *    once the month it exited in has closed (so that month's reward is settled first).
+     *  - Earns for exactly `periods` months; lockEnd = start of month (activeFrom + periods).
+     *  - One stake per wallet. After the stake is withdrawn/released the wallet can stake again.
      */
     function stake(uint256 periods) external payable nonReentrant {
         require(msg.value > 0, "Amount=0");
@@ -238,11 +240,7 @@ contract InfraStakingPool is
         _sync();
 
         UserInfo storage u = users[msg.sender];
-        if (u.amount > 0) {
-            require(u.exitEpoch != 0, "Already staked");
-            require(u.exitEpoch < currentEpoch(), "Wait for exit cycle to close");
-            _settle(msg.sender); // pay what is still claimable from the old stake before resetting
-        }
+        require(u.amount == 0, "Already staked");
 
         uint256 cur = currentEpoch();
         uint256 activeFrom = cur + 1;
@@ -254,45 +252,73 @@ contract InfraStakingPool is
             periods: uint64(periods),
             activeFrom: uint64(activeFrom),
             lockEnd: uint64(lockEnd),
-            exitEpoch: 0,
-            exitTime: 0,
             lastSettledEpoch: uint64(activeFrom - 1),
             totalClaimed: u.totalClaimed, // lifetime counters carry over
             totalExpired: u.totalExpired
         });
 
         scheduledActivation[activeFrom] += msg.value;
+        scheduledDeactivation[activeFrom + periods] += msg.value;
         totalStaked += msg.value;
 
         emit Staked(msg.sender, msg.value, periods, activeFrom, lockEnd);
     }
 
     /**
-     * @notice Withdraw the FULL principal after the lock has ended.
-     * @dev Also pays rewards of closed months still inside their claim window.
-     *      The running month keeps the weight earned up to now; its reward can be
-     *      claimed after the month closes (call claim() then).
+     * @notice Withdraw your FULL principal after the lock has ended.
+     * @dev Also pays rewards of earning months still inside their 30-day claim
+     *      window; rewards whose window has passed are recorded as expired.
      */
     function withdraw() external nonReentrant {
-        UserInfo storage u = users[msg.sender];
-        require(u.amount > 0 && u.exitEpoch == 0, "No stake found");
+        _release(msg.sender);
+    }
+
+    /**
+     * @notice Return an abandoned stake to its owner. Callable by ANYONE (admin script,
+     *         keeper) once the 30-day grace period after the lock has passed — the
+     *         staker can always call it (or withdraw()) right after the lock.
+     *         Principal always goes to the staker's own wallet; unclaimed rewards
+     *         are forfeited by then.
+     */
+    function releaseStake(address user) external nonReentrant {
+        if (msg.sender != user) require(block.timestamp >= graceEnd(user), "Grace period active");
+        _release(user);
+    }
+
+    /**
+     * @notice Batch version of releaseStake. Skips wallets that are still locked,
+     *         still inside their grace period, or have no stake.
+     * @dev Reverts if a wallet rejects native transfers (remove it and retry).
+     */
+    function releaseStakes(address[] calldata list) external nonReentrant {
+        for (uint256 i = 0; i < list.length; i++) {
+            UserInfo storage u = users[list[i]];
+            if (u.amount > 0 && (block.timestamp >= graceEnd(list[i]) || (msg.sender == list[i] && block.timestamp >= u.lockEnd))) {
+                _release(list[i]);
+            }
+        }
+    }
+
+    /// @notice When others may release this wallet's stake: lock end + 30-day grace period.
+    function graceEnd(address user) public view returns (uint256) {
+        return uint256(users[user].lockEnd) + CLAIM_WINDOW;
+    }
+
+    /// @dev Pays claimable rewards, returns principal to `user`, clears the stake.
+    function _release(address user) internal {
+        UserInfo storage u = users[user];
+        require(u.amount > 0, "No stake found");
         require(block.timestamp >= u.lockEnd, "Lock not expired");
         _sync();
 
-        uint256 cur = currentEpoch();
-        uint256 amount = u.amount;
+        _settle(user); // all earning months are closed by now; pay what is still claimable
 
-        // stop earning: remove from active principal and cut the rest of this month's weight
-        activeAmount -= amount;
-        epochWeightDeduction[cur] += amount * (epochEnd(cur) - block.timestamp);
+        uint256 amount = u.amount;
+        u.amount = 0;
         totalStaked -= amount;
 
-        _settle(msg.sender);
-        u.exitEpoch = uint64(cur);
-        u.exitTime = uint64(block.timestamp);
-
-        _send(msg.sender, amount);
-        emit Withdrawn(msg.sender, amount, cur);
+        _send(user, amount);
+        emit Withdrawn(user, amount, currentEpoch(), msg.sender);
     }
 
     /**
@@ -397,34 +423,28 @@ contract InfraStakingPool is
 
     /**
      * @notice Total weight of a month (sum of all stakers' weights).
-     * @dev For the running month this assumes current stakers stay all month;
-     *      it drops if someone withdraws before month end.
+     * @dev Stakes always earn full months, so a month's total is known as soon as it starts.
      */
     function totalWeight(uint256 epoch) public view returns (uint256) {
         if (epoch <= lastSyncedEpoch) {
-            return epochBaseWeight[epoch] - epochWeightDeduction[epoch];
+            return epochBaseWeight[epoch];
         }
         // not synced yet: simulate _sync() without writing
         uint256 active = activeAmount;
         for (uint256 e = lastSyncedEpoch + 1; e <= epoch; e++) {
-            active += scheduledActivation[e];
+            active = active + scheduledActivation[e] - scheduledDeactivation[e];
         }
         return active * (epochEnd(epoch) - epochStart(epoch));
     }
 
     /**
      * @notice One wallet's weight in a month.
-     * @return 0 before the stake activates or after the exit month;
-     *         amount × (exitTime − month start) in the exit month;
-     *         amount × full month length otherwise.
+     * @return amount × month length for the stake's lock months
+     *         (activeFrom .. activeFrom + periods - 1); 0 for any other month.
      */
     function userWeight(address user, uint256 epoch) public view returns (uint256) {
         UserInfo storage u = users[user];
-        if (u.amount == 0 || epoch < u.activeFrom) return 0;
-        if (u.exitEpoch != 0) {
-            if (epoch > u.exitEpoch) return 0;
-            if (epoch == u.exitEpoch) return u.amount * (u.exitTime - epochStart(epoch));
-        }
+        if (u.amount == 0 || epoch < u.activeFrom || epoch >= u.activeFrom + u.periods) return 0;
         return u.amount * (epochEnd(epoch) - epochStart(epoch));
     }
 
@@ -456,7 +476,7 @@ contract InfraStakingPool is
     /**
      * @notice Running-month snapshot for the UI (an estimate, not a promise).
      * @return epoch       running month id
-     * @return weight      wallet's weight this month (assumes it stays all month)
+     * @return weight      wallet's weight this month
      * @return total       total weight this month
      * @return rewardSoFar reward pool received so far this month
      */
@@ -508,8 +528,8 @@ contract InfraStakingPool is
 
     /**
      * @dev Writes the base weight of every month reached since the last sync:
-     *      activeAmount grows by stakes scheduled to start that month, then
-     *      baseWeight = activeAmount × month length. Called by every state change.
+     *      activeAmount += stakes starting that month − stakes whose lock ended,
+     *      then baseWeight = activeAmount × month length. Called by every state change.
      */
     function _sync() internal {
         uint256 cur = currentEpoch();
@@ -517,7 +537,7 @@ contract InfraStakingPool is
         if (cur <= e) return;
         uint256 active = activeAmount;
         for (e = e + 1; e <= cur; e++) {
-            active += scheduledActivation[e];
+            active = active + scheduledActivation[e] - scheduledDeactivation[e];
             epochBaseWeight[e] = active * (epochEnd(e) - epochStart(e));
         }
         activeAmount = active;
@@ -535,7 +555,8 @@ contract InfraStakingPool is
         from = uint256(u.lastSettledEpoch) + 1;
         if (cur == 0) return (1, type(uint256).max);
         to = cur - 1;
-        if (u.exitEpoch != 0 && u.exitEpoch < to) to = u.exitEpoch;
+        uint256 lastEarning = uint256(u.activeFrom) + u.periods - 1;
+        if (lastEarning < to) to = lastEarning;
         if (to < from) return (1, type(uint256).max);
     }
 

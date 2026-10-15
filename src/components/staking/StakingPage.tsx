@@ -302,7 +302,7 @@ export function StakingPage() {
         <>
           <p>
             <b>Weight = amount × time staked.</b> Your share of a cycle is your weight divided by everyone’s weight.
-            Stake more, or stay longer, and your share grows.
+            Stake more, or lock longer, and you earn in more months.
           </p>
           <div className="tour-eg">
             <div><span>Fees distributed in a cycle (example)</span><span>10,000 reAED</span></div>
@@ -320,7 +320,7 @@ export function StakingPage() {
       body: (
         <p>
           Once staked, this tab shows your position in the <b>{curCycle.label}</b> cycle: amount, share of pool weight,
-          lock countdown and total claimed. After the lock ends you can <b>unstake</b> your full principal here.
+          lock countdown and total claimed. When the lock ends, earning stops: <b>claim and unstake within 30 days</b>. After that, unclaimed rewards are forfeited and your principal is returned to your wallet.
         </p>
       ),
     },
@@ -482,7 +482,7 @@ export function StakingPage() {
                 <EmptyPanel
                   label={`Stake for ${nextCycle.label}`}
                   title="You already have an active stake"
-                  body="The pool allows one active stake per wallet. Your stake keeps earning each cycle until you unstake after the lock ends."
+                  body="The pool allows one active stake per wallet. Your stake earns for its lock months only. When the lock ends, claim and unstake within 30 days, then you can stake again."
                   cta="View my position"
                   onCta={() => setTab("earning")}
                 />
