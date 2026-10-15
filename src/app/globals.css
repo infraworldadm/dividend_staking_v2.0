@@ -2,34 +2,130 @@
 @tailwind components;
 @tailwind utilities;
 
+/* INFRA design system (mirrors infraworld.org): black, white, blue.
+   White tiles with hairlines on a cool white field; black tiles for live
+   systems; blue reserved for emphasis. */
 :root {
-  --app-bg: #f2f4f7;
-  --card-bg: #ffffff;
-  --border-soft: #dfe6ef;
-  --text-muted: #7b8697;
-  --brand: #1a6dff;
-  --brand-dark: #0d4fca;
+  --field: #f3f5f9;
+  --white: #ffffff;
+  --black: #0a0b0e;
+  --t1: #0a0b0e;
+  --t2: rgba(10, 11, 14, 0.64);
+  --t3: rgba(10, 11, 14, 0.42);
+  --line: rgba(10, 11, 14, 0.09);
+  --line-2: rgba(10, 11, 14, 0.16);
+  --blue: #1f5bff;
+  --blue-d: #0e3fd6;
+  --blue-soft: #eaf0ff;
+  --blue-l: #7ea0ff;
+  --w2: rgba(255, 255, 255, 0.64);
+  --w3: rgba(255, 255, 255, 0.4);
+  --wl: rgba(255, 255, 255, 0.1);
+  --r: 16px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  color-scheme: light;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html,
+* { box-sizing: border-box }
+html, body { margin: 0; padding: 0; min-height: 100%; overflow-x: clip }
 body {
-  margin: 0;
-  padding: 0;
-  min-height: 100%;
-  font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
-  background: linear-gradient(180deg, #f6f8fb 0%, #eef2f8 100%);
-  color: #0f172a;
+  background: var(--field);
+  color: var(--t1);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
+a { color: inherit; text-decoration: none }
+button, input, select { font: inherit; color: inherit }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 6px }
+::selection { background: var(--blue); color: #fff }
+h1, h2, h3 { font-weight: 600; letter-spacing: -0.035em; line-height: 1.02; text-wrap: balance; margin: 0 }
 
-button {
-  font: inherit;
-}
+/* ambient blue glow behind the page */
+.amb { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden }
+.amb i { position: absolute; width: 70vw; height: 70vw; border-radius: 50%; background: radial-gradient(circle, rgba(31, 91, 255, 0.12), transparent 62%) }
+.amb i:first-child { top: -35vw; right: -20vw }
+.amb i:last-child { bottom: -45vw; left: -25vw; opacity: 0.6 }
 
-input,
-select {
-  font: inherit;
+.wrap { max-width: 1240px; margin-inline: auto; padding-inline: clamp(16px, 2.6vw, 28px) }
+.mono { font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace }
+
+/* nav */
+.nav { position: sticky; top: 0; z-index: 50; background: rgba(243, 245, 249, 0.78); backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); border-bottom: 1px solid var(--line) }
+
+/* labels */
+.lbl { font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--t3); display: inline-flex; align-items: center; gap: 8px }
+.lbl i { width: 5px; height: 5px; background: currentColor }
+.lbl.b { color: var(--blue) }
+
+/* tiles */
+.tile { position: relative; background: var(--white); border-radius: var(--r); padding: clamp(20px, 2.2vw, 28px); display: flex; flex-direction: column; gap: 14px; min-width: 0; box-shadow: inset 0 0 0 1px var(--line) }
+.tile.dark { background: var(--black); color: #fff; box-shadow: inset 0 0 0 1px var(--wl) }
+.tile.dark .lbl { color: var(--w3) }
+.tile.blue { background: var(--blue); color: #fff; box-shadow: none }
+.tile.blue .lbl { color: rgba(255, 255, 255, 0.72) }
+.tile.dark p, .tile.blue p { color: var(--w2) }
+
+/* pill */
+.pill { display: inline-flex; align-items: center; gap: 10px; padding: 5px 12px 5px 5px; border: 1px solid var(--line-2); border-radius: 99px; background: rgba(255, 255, 255, 0.8); font-size: 0.84rem; color: var(--t2); position: relative; overflow: hidden }
+.pill .pd { font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; background: var(--black); color: #fff; padding: 4px 9px; border-radius: 99px }
+.pill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(31, 91, 255, 0.14) 50%, transparent 70%); transform: translateX(-100%); animation: shine 3.6s var(--ease) infinite 1.5s }
+@keyframes shine { 0% { transform: translateX(-100%) } 60%, 100% { transform: translateX(100%) } }
+
+/* live dot */
+.live { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue-l) }
+.live i { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); animation: pl 1.8s infinite }
+@keyframes pl { 0% { box-shadow: 0 0 0 0 rgba(31, 91, 255, 0.7) } 100% { box-shadow: 0 0 0 9px rgba(31, 91, 255, 0) } }
+
+/* buttons: fill sweeps up on hover */
+.btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 48px; padding: 0 20px; border-radius: 10px; font-size: 0.92rem; font-weight: 500; overflow: hidden; isolation: isolate; border: 0; cursor: pointer; transition: color 0.4s var(--ease), opacity 0.3s }
+.btn::before { content: ""; position: absolute; inset: 0; z-index: -1; transform: scaleY(0); transform-origin: bottom; transition: transform 0.55s var(--ease) }
+.btn:hover:not(:disabled)::before { transform: scaleY(1) }
+.btn svg { width: 16px; height: 16px; transition: transform 0.55s var(--ease) }
+.btn:hover:not(:disabled) svg { transform: translateX(3px) }
+.btn:disabled { cursor: not-allowed; opacity: 0.45 }
+.btn-k { background: var(--black); color: #fff }
+.btn-k::before { background: var(--blue) }
+.btn-b { background: var(--blue); color: #fff }
+.btn-b::before { background: var(--black) }
+.btn-w { background: #fff; color: var(--black) }
+.btn-w::before { background: var(--black) }
+.btn-w:hover:not(:disabled) { color: #fff }
+.btn-sm { height: 40px; padding: 0 16px; font-size: 0.85rem }
+
+/* segmented control */
+.seg { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; gap: 4px; background: var(--field); border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line) }
+.seg button { height: 40px; border-radius: 9px; border: 0; background: transparent; font-size: 0.9rem; font-weight: 500; color: var(--t2); cursor: pointer; transition: background 0.35s var(--ease), color 0.35s }
+.seg button[aria-pressed="true"] { background: var(--black); color: #fff }
+
+/* amount field */
+.field { display: flex; min-width: 0; max-width: 100%; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow 0.3s }
+.field:focus-within { box-shadow: inset 0 0 0 1px var(--blue), 0 0 0 4px var(--blue-soft) }
+.field input { flex: 1; min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; font-size: clamp(1.6rem, 3vw, 2rem); font-weight: 600; letter-spacing: -0.03em }
+
+/* period chips */
+.chips { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px }
+.chips button { height: 44px; border-radius: 10px; border: 0; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; font-size: 0.85rem; font-weight: 500; color: var(--t2); transition: all 0.3s var(--ease) }
+.chips button:hover { color: var(--t1); box-shadow: inset 0 0 0 1px var(--line-2) }
+.chips button[aria-pressed="true"] { background: var(--blue-soft); color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue) }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 0.88rem }
+.row span:first-child { color: var(--t2) }
+.hr { height: 1px; background: var(--line) }
+.tile.dark .hr, .tile.blue .hr { background: var(--wl) }
+
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 0.82rem; color: var(--t2); cursor: pointer }
+.check input { margin-top: 3px; accent-color: var(--blue); width: 16px; height: 16px }
+
+.note { font-size: 0.8rem; padding: 12px 14px; border-radius: 10px; background: var(--blue-soft); color: var(--blue-d) }
+.err { font-size: 0.8rem; color: #c2410c }
+
+.steps { counter-reset: s; display: grid; gap: 14px; margin: 0; padding: 0; list-style: none }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 28px 1fr; gap: 12px; font-size: 0.9rem; color: var(--w2) }
+.steps li::before { content: "0" counter(s); font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 0.72rem; color: var(--blue-l); padding-top: 3px }
+.steps b { color: #fff; font-weight: 500; display: block }
+
+@media (prefers-reduced-motion: reduce) {
+  .pill::after, .live i { animation: none }
 }

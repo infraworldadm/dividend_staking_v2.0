@@ -48,121 +48,119 @@ export function StakePanel({
   symbol,
 }: StakePanelProps) {
   const inStakeMode = mode === "stake";
+  const unlockDate = new Date(Date.now() + periods * 30 * 86400 * 1000).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const reason = inStakeMode ? stakeDisabledReason : withdrawDisabledReason;
 
   return (
-    <div className="rounded-xl2 border border-borderSoft bg-cardBg p-0 shadow-card">
-      <div className="grid grid-cols-2 gap-3 p-2">
-        <button
-          onClick={() => setMode("stake")}
-          className={`rounded-md py-2 text-sm font-medium ${
-            inStakeMode ? "bg-[#d8e8ff] text-slate-900" : "bg-[#f5f7fb] text-slate-500"
-          }`}
-        >
+    <div className="tile !gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="lbl b">
+          <i /> INFRA Real Yield
+        </span>
+        <span className="mono text-[0.72rem] text-[var(--t3)]">Wallet · {walletBalance} {symbol}</span>
+      </div>
+
+      <div className="seg" role="group" aria-label="Action">
+        <button aria-pressed={inStakeMode} onClick={() => setMode("stake")}>
           Stake
         </button>
-        <button
-          onClick={() => setMode("withdraw")}
-          className={`rounded-md py-2 text-sm font-medium ${
-            !inStakeMode ? "bg-[#d8e8ff] text-slate-900" : "bg-[#f5f7fb] text-slate-500"
-          }`}
-        >
+        <button aria-pressed={!inStakeMode} onClick={() => setMode("withdraw")}>
           Unstake
         </button>
       </div>
 
-      <div className="border-t border-borderSoft p-4">
-        {inStakeMode ? (
-          <>
-            <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
-              <span>Stake {symbol}</span>
-              <span>INFRA Real Yield (IRY)</span>
-            </div>
-            <div className="flex items-center rounded-lg border border-borderSoft bg-[#f8fafc] px-3 py-2">
+      {inStakeMode ? (
+        <>
+          <div className="grid min-w-0 gap-2">
+            <label htmlFor="amount" className="text-[0.85rem] text-[var(--t2)]">
+              Amount
+            </label>
+            <div className="field">
               <input
+                id="amount"
+                inputMode="decimal"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                onFocus={(e) => e.target.select()}
                 placeholder="0.00"
-                className="w-full border-0 bg-transparent text-2xl font-semibold outline-none"
               />
-              <button
-                onClick={() => setAmount(walletBalanceRaw)}
-                className="rounded bg-[#e7f0ff] px-3 py-1 text-xs font-semibold text-brand"
-              >
+              <span className="mono text-[0.8rem] text-[var(--t3)]">{symbol}</span>
+              <button onClick={() => setAmount(walletBalanceRaw)} className="btn btn-k !h-8 !rounded-lg !px-3 !text-[0.75rem]">
                 Max
               </button>
             </div>
-            <div className="mt-2 text-xs text-textMuted">Balance: {walletBalance} {symbol}</div>
+          </div>
 
-            <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
-              <span>Lock Periods (30 days each)</span>
-              <select
-                value={periods}
-                onChange={(e) => setPeriods(Number(e.target.value))}
-                className="rounded border border-borderSoft bg-white px-2 py-1 text-sm"
-              >
-                {[1, 2, 3, 6, 12].map((p) => (
-                  <option key={p} value={p}>
-                    {p} period{p > 1 ? "s" : ""}
-                  </option>
-                ))}
-              </select>
+          <div className="grid min-w-0 gap-2">
+            <div className="row">
+              <span>Lock period</span>
+              <span className="mono text-[0.75rem] text-[var(--t3)]">30 days each</span>
             </div>
-          </>
-        ) : (
-          <>
-            <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
-              <span>Withdraw Staked Amount</span>
-              <span>INFRA Real Yield (IRY)</span>
+            <div className="chips">
+              {[1, 2, 3, 6, 12].map((p) => (
+                <button key={p} aria-pressed={periods === p} onClick={() => setPeriods(p)}>
+                  {p * 30}d
+                </button>
+              ))}
             </div>
-            <div className="rounded-lg border border-borderSoft bg-[#f8fafc] px-3 py-3 text-2xl font-semibold">
-              {stakedAmount}
+          </div>
+
+          <div className="grid gap-3 rounded-xl bg-[var(--field)] p-4">
+            <div className="row">
+              <span>Periods</span>
+              <span className="font-medium">{periods}</span>
             </div>
-            <div className="mt-2 text-xs text-textMuted">Staked: {stakedAmount} {symbol}</div>
-          </>
-        )}
+            <div className="row">
+              <span>Unlocks on</span>
+              <span className="font-medium">{unlockDate}</span>
+            </div>
+            <div className="row">
+              <span>{weightMetricLabel}</span>
+              <span className="font-medium">{weightMetricValue}</span>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="grid min-w-0 gap-2">
+            <span className="text-[0.85rem] text-[var(--t2)]">Staked principal</span>
+            <div className="field">
+              <span className="flex-1 text-[clamp(1.6rem,3vw,2rem)] font-semibold tracking-[-0.03em]">{stakedAmount}</span>
+              <span className="mono text-[0.8rem] text-[var(--t3)]">{symbol}</span>
+            </div>
+            <span className="text-[0.78rem] text-[var(--t3)]">Withdraw returns your full principal after the lock ends.</span>
+          </div>
+          <div className="grid gap-3 rounded-xl bg-[var(--field)] p-4">
+            <div className="row">
+              <span>{weightMetricLabel}</span>
+              <span className="font-medium text-[#c2410c]">{weightMetricValue}</span>
+            </div>
+          </div>
+        </>
+      )}
 
-        <div className="mt-4 flex items-center justify-between border-t border-borderSoft pt-3 text-sm text-slate-500">
-          <span>{weightMetricLabel}</span>
-          <span className={inStakeMode ? "text-slate-500" : "text-red-500"}>{weightMetricValue}</span>
-        </div>
+      <label className="check">
+        <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
+        <span>I accept the terms of service and the pool&apos;s distribution policy.</span>
+      </label>
 
-        <label className="mt-3 flex items-start gap-2 text-xs text-textMuted">
-          <input
-            type="checkbox"
-            checked={termsAccepted}
-            onChange={(e) => setTermsAccepted(e.target.checked)}
-            className="mt-[2px]"
-          />
-          <span>
-            Accept Terms and Services
-            <br />
-            By staking, you agree to our platform's terms and distribution policies.
-          </span>
-        </label>
+      <button
+        onClick={inStakeMode ? onStake : onWithdraw}
+        disabled={inStakeMode ? isStakeDisabled || busy : isWithdrawDisabled || busy}
+        className={`btn w-full ${inStakeMode ? "btn-b" : "btn-k"}`}
+      >
+        {busy ? "Processing…" : inStakeMode ? `Stake ${symbol}` : "Withdraw & claim rewards"}
+      </button>
 
-        <button
-          onClick={inStakeMode ? onStake : onWithdraw}
-          disabled={inStakeMode ? isStakeDisabled || busy : isWithdrawDisabled || busy}
-          title={inStakeMode ? stakeDisabledReason || "" : withdrawDisabledReason || ""}
-          className="mt-4 w-full rounded-lg bg-brand py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy
-            ? "Processing..."
-            : inStakeMode
-              ? `Stake ${symbol}`
-              : "Withdraw & Claim Rewards"}
-        </button>
+      {reason ? <p className="err !-mt-2 text-center !text-[var(--t2)]">{reason}</p> : null}
 
-        {(inStakeMode ? stakeDisabledReason : withdrawDisabledReason) ? (
-          <p className="mt-2 text-xs text-textMuted">
-            {inStakeMode ? stakeDisabledReason : withdrawDisabledReason}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="m-3 rounded-lg border border-[#f5d6a5] bg-[#fff8ec] p-3 text-xs text-[#b16b17]">
-        Rewards are proportional to your staked amount and time. Earlier stakers receive more rewards in the same period.
-      </div>
+      <p className="note">
+        Rewards are proportional to amount and time staked. Earlier stakers earn more within the same cycle.
+      </p>
     </div>
   );
 }

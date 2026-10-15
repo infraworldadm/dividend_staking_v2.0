@@ -1,5 +1,7 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
+
 type RewardsPanelProps = {
   pendingRewards: string;
   symbol: string;
@@ -20,20 +22,25 @@ export function RewardsPanel({
   busy,
 }: RewardsPanelProps) {
   return (
-    <div className="rounded-xl2 border border-blue-400 bg-gradient-to-br from-[#0d5be9] to-[#0a3f9a] p-5 text-white shadow-card">
-      <p className="text-xs tracking-wide text-blue-100">PENDING REWARDS</p>
-      <div className="mt-3 text-5xl font-bold leading-none">{pendingRewards}</div>
-      <div className="mt-2 text-sm text-blue-100">{symbol}</div>
-      <div className="mt-2 text-xs text-blue-200">Reward expires in: {rewardExpiryIn}</div>
-      <button
-        className="mt-5 w-full rounded-lg bg-white py-3 text-sm font-semibold text-brand disabled:cursor-not-allowed disabled:opacity-60"
-        onClick={onClaim}
-        disabled={isClaimDisabled || busy}
-        title={claimDisabledReason || ""}
-      >
-        {busy ? "Processing..." : "Claim Rewards"}
+    <div className="tile blue">
+      <span className="lbl">
+        <i /> Pending rewards
+      </span>
+      <div>
+        <div className="text-[clamp(2.4rem,5vw,3.4rem)] font-semibold leading-none tracking-[-0.04em]">
+          {pendingRewards}
+        </div>
+        <div className="mono mt-2 text-[0.75rem] text-white/70">{symbol}</div>
+      </div>
+      <div className="hr" />
+      <div className="row">
+        <span className="!text-white/70">Claim window closes in</span>
+        <span className="mono text-[0.85rem]">{rewardExpiryIn}</span>
+      </div>
+      <button className="btn btn-w w-full" onClick={onClaim} disabled={isClaimDisabled || busy}>
+        {busy ? "Processing…" : "Claim rewards"} {!busy ? <ArrowRight /> : null}
       </button>
-      {claimDisabledReason ? <p className="mt-2 text-xs text-blue-200">{claimDisabledReason}</p> : null}
+      {claimDisabledReason ? <p className="!text-[0.8rem] !text-white/70">{claimDisabledReason}</p> : null}
     </div>
   );
 }

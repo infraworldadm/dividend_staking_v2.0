@@ -1,13 +1,31 @@
 export function HowItWorksCard() {
   return (
-    <div className="rounded-xl2 border border-slate-700 bg-gradient-to-br from-[#0f1319] to-[#2c3138] p-5 text-white shadow-card">
-      <h3 className="mb-3 text-[28px] font-bold">How it works?</h3>
-      <ul className="space-y-2 text-sm text-white/85">
-        <li>✓ Accumulate weight over time</li>
-        <li>✓ Earn from real network activity</li>
-        <li>✓ Participate in 30-day reward cycles</li>
-        <li>✓ Benefit from a secure, fair distribution model</li>
-      </ul>
+    <div className="tile dark">
+      <span className="lbl">
+        <i /> How it works
+      </span>
+      <ol className="steps">
+        <li>
+          <span>
+            <b>Stake reAED</b>Lock for one or more 30-day periods.
+          </span>
+        </li>
+        <li>
+          <span>
+            <b>Accumulate weight</b>Weight grows with amount × time staked.
+          </span>
+        </li>
+        <li>
+          <span>
+            <b>Earn network revenue</b>Rewards come from real fees, not emissions.
+          </span>
+        </li>
+        <li>
+          <span>
+            <b>Claim each cycle</b>Unclaimed rewards expire after the claim window.
+          </span>
+        </li>
+      </ol>
     </div>
   );
 }

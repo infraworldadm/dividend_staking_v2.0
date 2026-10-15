@@ -12,6 +12,8 @@ import { useDividendPoolReads } from "@/hooks/useDividendPoolReads";
 import { useDividendPoolWrites } from "@/hooks/useDividendPoolWrites";
 import { formatCountdown, formatToken } from "@/lib/format";
 import { useCountdown } from "@/hooks/useCountdown";
+import { appChain } from "@/lib/web3/chains";
+import { dividendPoolAddress } from "@/lib/web3/contract";
 
 function getThirtyDayCycleLeftSeconds(now: number) {
   const cycle = 30 * 24 * 60 * 60;
@@ -39,7 +41,7 @@ export function StakingPage() {
 
   const { isConnected, address, poolInfo, userInfo, refetch } = useDividendPoolReads();
   const { data: wallet } = useBalance({ address });
-  const { stake, claim, withdraw, hasActiveTx, isSigning, isConfirming, isConfirmed, errorMessage, reset } =
+  const { stake, claim, withdraw, txHash, hasActiveTx, isSigning, isConfirming, isConfirmed, errorMessage, reset } =
     useDividendPoolWrites();
 
   useEffect(() => {
@@ -117,107 +119,165 @@ export function StakingPage() {
 
   const stats = [
     {
-      label: "Pool Balance",
-      value: formatToken(poolInfo.totalLocked, 2),
+      label: "Wallet balance",
+      value: formatToken(wallet?.value ?? 0n, 2),
       sub: symbol,
       icon: icons.pool,
-      isPrimary: true,
     },
     {
-      label: "Total Stakes",
+      label: "Total staked",
       value: formatToken(poolInfo.totalStaked, 2),
       sub: symbol,
       icon: icons.total,
     },
     {
-      label: "Your Stakes",
+      label: "Your stake",
       value: formatToken(userInfo.amount, 2),
       sub: symbol,
       icon: icons.yours,
     },
     {
-      label: "Reset In",
+      label: "Cycle resets in",
       value: formatCountdown(resetInSeconds),
-      sub: symbol,
+      sub: "30-day cycle",
       icon: icons.reset,
     },
   ];
 
+  const explorer = appChain.blockExplorers?.default.url.replace(/\/$/, "");
+  const shortPool = `${dividendPoolAddress.slice(0, 6)}…${dividendPoolAddress.slice(-4)}`;
+
   return (
-    <main className="mx-auto max-w-6xl p-6">
+    <>
       <Header />
-
-      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-1 rounded-full border border-borderSoft bg-white px-2 py-1 text-xs text-textMuted">
-            <span className="text-brand">•</span> Dividend staking pool
+      <main className="wrap pb-16 pt-10 sm:pt-14">
+        <section className="mb-8 grid gap-6 lg:grid-cols-[1.25fr_1fr] lg:items-end">
+          <div className="grid gap-5">
+            <span className="pill justify-self-start">
+              <span className="pd">Live</span> Dividend pool on {appChain.name}
+            </span>
+            <h1 className="text-[clamp(2.4rem,6vw,4.4rem)]">
+              Stake reAED.
+              <br />
+              <span className="text-[var(--blue)]">Earn network revenue.</span>
+            </h1>
+            <p className="max-w-[520px] text-[1.02rem] text-[var(--t2)]">
+              No inflation. No emissions. Rewards are paid from real INFRA network fees, shared by weight across
+              30-day cycles.
+            </p>
           </div>
-          <h1 className="text-[48px] font-extrabold leading-tight">INFRA Staking</h1>
-          <p className="mt-1 text-textMuted">No inflation. No emissions. Pure network revenue.</p>
-        </div>
 
-        <div className="h-[102px] w-full max-w-[520px] rounded-xl2 border border-borderSoft bg-[radial-gradient(circle_at_20%_20%,#1b62d9,#1d1d1f)] p-4 text-white shadow-card">
-          <div className="text-xs uppercase text-blue-100">REID</div>
-          <div className="mt-1 text-2xl font-bold">One Identity For Everything.</div>
-          <div className="mt-1 text-xs text-blue-100">A single, simple ID to access apps, money, and connections.</div>
-        </div>
-      </div>
+          <div className="tile dark">
+            <div className="flex items-center justify-between">
+              <span className="live">
+                <i /> Pool balance
+              </span>
+              <span className="mono text-[0.7rem] text-white/40">Refreshes every 10s</span>
+            </div>
+            <div className="text-[clamp(2.2rem,4.6vw,3.2rem)] font-semibold leading-none tracking-[-0.04em]">
+              {formatToken(poolInfo.totalLocked, 2)}
+              <span className="mono ml-2 text-[0.9rem] font-normal tracking-normal text-white/50">{symbol}</span>
+            </div>
+            <div className="hr" />
+            <div className="row">
+              <span className="!text-white/60">Reward vault</span>
+              <span className="mono text-[0.85rem]">
+                {formatToken(poolInfo.rewardVaultBalance, 2)} {symbol}
+              </span>
+            </div>
+          </div>
+        </section>
 
-      <StatsCards cards={stats} />
+        <StatsCards cards={stats} />
 
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <StakePanel
-          mode={mode}
-          setMode={setMode}
-          amount={amount}
-          setAmount={setAmount}
-          periods={periods}
-          setPeriods={setPeriods}
-          walletBalance={walletBalance}
-          walletBalanceRaw={walletBalanceRaw}
-          stakedAmount={stakedAmount}
-          weightMetricLabel={mode === "stake" ? "Weight Accumulated" : "Weight Lost"}
-          weightMetricValue={mode === "stake" ? "0.00%" : "0.00%"}
-          termsAccepted={termsAccepted}
-          setTermsAccepted={setTermsAccepted}
-          onStake={() => stake(amount, periods)}
-          onWithdraw={withdraw}
-          isStakeDisabled={Boolean(stakeDisabledReason)}
-          stakeDisabledReason={stakeDisabledReason || contractError}
-          isWithdrawDisabled={Boolean(withdrawDisabledReason)}
-          withdrawDisabledReason={withdrawDisabledReason || contractError}
-          busy={busy}
-          symbol={symbol}
-        />
-
-        <div className="space-y-4">
-          <RewardsPanel
-            pendingRewards={pendingRewards}
-            symbol={symbol}
-            rewardExpiryIn={
-              userInfo.pendingClaimable > 0n && userInfo.rewardExpiryAt > 0n
-                ? formatCountdown(rewardExpirySeconds)
-                : "--"
-            }
-            onClaim={claim}
-            isClaimDisabled={Boolean(claimDisabledReason)}
-            claimDisabledReason={claimDisabledReason || contractError}
+        <section className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1.45fr_1fr]">
+          <StakePanel
+            mode={mode}
+            setMode={setMode}
+            amount={amount}
+            setAmount={setAmount}
+            periods={periods}
+            setPeriods={setPeriods}
+            walletBalance={walletBalance}
+            walletBalanceRaw={walletBalanceRaw}
+            stakedAmount={stakedAmount}
+            weightMetricLabel={mode === "stake" ? "Weight accumulated" : "Weight lost"}
+            weightMetricValue={mode === "stake" ? "0.00%" : "0.00%"}
+            termsAccepted={termsAccepted}
+            setTermsAccepted={setTermsAccepted}
+            onStake={() => stake(amount, periods)}
+            onWithdraw={withdraw}
+            isStakeDisabled={Boolean(stakeDisabledReason)}
+            stakeDisabledReason={stakeDisabledReason || contractError}
+            isWithdrawDisabled={Boolean(withdrawDisabledReason)}
+            withdrawDisabledReason={withdrawDisabledReason || contractError}
             busy={busy}
+            symbol={symbol}
           />
-          <div className="rounded-xl2 border border-borderSoft bg-cardBg p-4 text-sm text-slate-600 shadow-card">
-            <p>
-              <strong>Unlock in:</strong> {userInfo.amount > 0n ? formatCountdown(unlockInSeconds) : "--"}
-            </p>
-            <p className="mt-2">
-              <strong>Reward expires in:</strong>{" "}
-              {userInfo.pendingClaimable > 0n && userInfo.rewardExpiryAt > 0n
-                ? formatCountdown(rewardExpirySeconds)
-                : "--"}
-            </p>
+
+          <div className="grid content-start gap-3">
+            <RewardsPanel
+              pendingRewards={pendingRewards}
+              symbol={symbol}
+              rewardExpiryIn={
+                userInfo.pendingClaimable > 0n && userInfo.rewardExpiryAt > 0n
+                  ? formatCountdown(rewardExpirySeconds)
+                  : "--"
+              }
+              onClaim={claim}
+              isClaimDisabled={Boolean(claimDisabledReason)}
+              claimDisabledReason={claimDisabledReason || contractError}
+              busy={busy}
+            />
+
+            <div className="tile">
+              <span className="lbl">
+                <i /> Your position
+              </span>
+              <div className="row">
+                <span>Unlocks in</span>
+                <span className="mono text-[0.85rem]">
+                  {userInfo.amount > 0n ? formatCountdown(unlockInSeconds) : "--"}
+                </span>
+              </div>
+              <div className="hr" />
+              <div className="row">
+                <span>Total claimed</span>
+                <span className="mono text-[0.85rem]">
+                  {formatToken(userInfo.totalClaimed, 2)} {symbol}
+                </span>
+              </div>
+            </div>
+
+            <HowItWorksCard />
           </div>
-          <HowItWorksCard />
-        </div>
-      </div>
-    </main>
+        </section>
+
+        {txHash && explorer ? (
+          <a
+            href={`${explorer}/tx/${txHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full bg-[var(--black)] px-5 py-3 text-[0.85rem] text-white shadow-lg"
+          >
+            {isConfirming ? "Confirming transaction…" : "Transaction sent"} · <span className="text-[var(--blue-l)]">View on explorer</span>
+          </a>
+        ) : null}
+
+        <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-6 text-[0.8rem] text-[var(--t3)]">
+          <span>© {new Date().getFullYear()} INFRA · Dividend Pool</span>
+          {explorer ? (
+            <a
+              href={`${explorer}/address/${dividendPoolAddress}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mono transition-colors hover:text-[var(--blue)]"
+            >
+              Contract {shortPool} ↗
+            </a>
+          ) : null}
+        </footer>
+      </main>
+    </>
   );
 }

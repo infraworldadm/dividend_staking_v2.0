@@ -23,6 +23,6 @@ export function formatCountdown(seconds: number) {
     .toString()
     .padStart(2, "0");
 
-  if (days > 0) return `${days} Day | ${hours}:${mins}:${secs}`;
+  if (days > 0) return `${days}d ${hours}:${mins}:${secs}`;
   return `${hours}:${mins}:${secs}`;
 }
