@@ -80,14 +80,13 @@ contract UpgradeFromLegacyTest is Test {
         assertEq(pool.totalStaked(), 0);
         assertEq(pool.lastSyncedEpoch(), pool.currentEpoch());
         assertEq(pool.surplusBalance(), leftover); // old leftover is recoverable surplus
-        (uint256 aliceAmt,,,,,,,) = pool.users(alice);
-        assertEq(aliceAmt, 0); // old leftover user data does not leak into the new records
+        assertEq(pool.positionCount(alice), 0); // old leftover user data does not leak into the new records
 
         // new monthly flow on the upgraded proxy
         vm.prank(alice);
-        pool.stake{value: 300 ether}(1);
+        uint256 aId = pool.stake{value: 300 ether}(1);
         vm.prank(bob);
-        pool.stake{value: 100 ether}(1);
+        uint256 bId = pool.stake{value: 100 ether}(1);
         vm.warp(NOV_1 + 10 days);
         vm.deal(address(dividend), 1_000 ether);
         vm.prank(owner);
@@ -96,14 +95,14 @@ contract UpgradeFromLegacyTest is Test {
         vm.warp(DEC_1 + 1 days);
         uint256 before = alice.balance;
         vm.prank(alice);
-        pool.withdraw();
+        pool.withdraw(aId);
         assertEq(alice.balance - before, 300 ether + 750 ether);
 
         // Bob misses the grace period → principal only; his share goes to admin
         vm.warp(DEC_1 + 30 days);
         before = bob.balance;
         vm.prank(bob);
-        pool.withdraw();
+        pool.withdraw(bId);
         assertEq(bob.balance - before, 100 ether);
         pool.sweepExpired(E_NOV);
         assertEq(admin.balance, 250 ether);

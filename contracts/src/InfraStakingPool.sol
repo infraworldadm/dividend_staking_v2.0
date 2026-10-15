@@ -21,33 +21,34 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  *    - One epoch = one calendar month in UTC.
  *    - Epoch id = year * 12 + (month - 1). Example: October 2026 = 2026*12 + 9 = 24321.
  *
- *  Staking
- *    - A stake made during month M becomes ACTIVE at the start of month M+1.
- *    - It earns ONLY for its `periods` lock months (1..12): months
- *      activeFrom .. activeFrom + periods - 1. One stake per wallet.
- *    - When the lock ends the stake STOPS earning. The staker then has a 30-day
- *      grace period to withdraw() principal TOGETHER WITH the rewards.
- *    - After the grace period the staker can withdraw the PRINCIPAL ONLY; the
- *      unclaimed rewards are forfeited and go to the ADMIN WALLET (sweepExpired).
- *    - Anyone (e.g. an admin/keeper script) may also call releaseStake(user) /
- *      releaseStakes(users) after the grace period to send the principal back to
- *      the staker's own wallet.
+ *  Staking — MULTIPLE POSITIONS PER WALLET
+ *    - Every stake() opens a new POSITION with its own amount and lock (1..12 months).
+ *      A wallet can hold up to MAX_POSITIONS open positions at the same time.
+ *    - A position opened during month M becomes ACTIVE at the start of month M+1
+ *      (the running month is closed to new stakes).
+ *    - It earns ONLY for its lock months: activeFrom .. activeFrom + periods - 1.
+ *    - When the lock ends the position STOPS earning. The staker then has a 30-day
+ *      grace period to withdraw(positionId) the principal TOGETHER WITH its rewards.
+ *    - After the grace period the staker can withdraw the PRINCIPAL ONLY; unclaimed
+ *      rewards are forfeited and go to the ADMIN WALLET (sweepExpired).
+ *    - Anyone (e.g. an admin/keeper script) may releaseStakes(users) after the grace
+ *      period to send principal back to each staker's own wallet.
  *
  *  Rewards (no APR is promised)
  *    - Rewards come ONLY from the dividend pool (DividendPoolNativeV2) or the owner.
- *      The admin withdraws the dividend pool to this contract at month end
- *      (sendRewardsToStaking) — e.g. 1,000 reAED — and that amount is split
- *      among that month's stakers by weight.
- *    - Every reAED received during month M becomes month M's reward pool, so
- *      send it BEFORE 00:00 UTC on the 1st (e.g. last day, 23:00 UTC).
- *    - Weight   = staked amount × seconds the stake was active in that month.
- *    - Share    = user weight ÷ total weight of that month.
- *    - Reward   = month's reward pool × share.
+ *      The admin sends the dividend pool balance here at month end
+ *      (sendRewardsToStaking) — e.g. 1,000 reAED — and that amount is split among
+ *      that month's positions by weight.
+ *    - Every reAED received during month M is month M's reward pool, so send it
+ *      BEFORE 00:00 UTC on the 1st (e.g. last day, 23:00 UTC).
+ *    - Weight = position amount × month length (positions always earn whole months).
+ *    - Reward of a position for month M = M's pool × position weight ÷ total weight of M.
  *
  *  Claiming
  *    - When month M closes, its rewards are claimable for CLAIM_WINDOW (30 days).
- *    - After the window, unclaimed rewards expire. Anyone may call
- *      sweepExpired(M) to send them to the ADMIN WALLET (not to the next month).
+ *      claim() collects rewards from ALL of the wallet's positions at once.
+ *    - After the window, unclaimed rewards expire. Anyone may call sweepExpired(M)
+ *      to send them to the ADMIN WALLET (not to the next month).
  *    - A month nobody staked in can be swept to the admin wallet as soon as it closes.
  *
  *  Owner (MUST be a multisig, e.g. Gnosis Safe)
@@ -57,10 +58,9 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  *    - emergencyWithdraw(): ANY amount, including principal.
  *
  *  Scalability
- *    No loops over users. Per-month totals are computed from:
- *      activeAmount (principal earning), scheduledActivation (stakes starting
- *      that month) and scheduledDeactivation (locks ending that month).
- *    Loops only run over months (since last sync / since a user's last claim).
+ *    No loops over users. Per-month totals come from activeAmount,
+ *    scheduledActivation and scheduledDeactivation. Per-wallet loops are bounded by
+ *    MAX_POSITIONS and by the number of months since the last claim.
  */
 contract InfraStakingPool is
     Initializable,
@@ -73,10 +73,14 @@ contract InfraStakingPool is
     // ════════════════════════════════════════════════════════════════════
 
     /// @notice How long a closed month's rewards stay claimable (30 days after month end).
+    ///         Also the grace period after a position's lock ends.
     uint256 public constant CLAIM_WINDOW = 30 days;
 
     /// @notice Maximum lock length in months.
     uint256 public constant MAX_PERIODS = 12;
+
+    /// @notice Maximum number of open positions per wallet (bounds gas of claim()).
+    uint256 public constant MAX_POSITIONS = 20;
 
     // ════════════════════════════════════════════════════════════════════
     //  STORAGE
@@ -108,11 +112,11 @@ contract InfraStakingPool is
     address public dividendPool;
     /// @notice slot 1 — wallet that receives expired rewards (was `rewardAdmin`).
     address public adminWallet;
-    /// @dev slot 2 — legacy per-user records (unused; must be empty of live stakes to upgrade).
+    /// @dev slot 2 — legacy per-user records (unused; must hold no live stakes to upgrade).
     mapping(address => LegacyUserInfo) private legacyUsers;
-    /// @notice slot 3 — principal currently held for stakers (same meaning as before).
+    /// @notice slot 3 — principal currently held for stakers (all open positions).
     uint256 public totalStaked;
-    /// @dev slot 4 — legacy totalLocked (must be 0 to upgrade).
+    /// @notice slot 4 — legacy totalLocked (must be 0 to upgrade).
     uint256 public legacyTotalLocked;
     uint256 private legacyTotalWeight; // slot 5
     uint256 private legacyLastGlobalUpdate; // slot 6
@@ -124,54 +128,51 @@ contract InfraStakingPool is
 
     // ── slots 12+: monthly pool ──
 
-    /// @notice Everything the contract knows about one wallet's stake.
-    struct UserInfo {
-        uint256 amount; // principal currently staked (0 = no stake)
-        uint64 stakedAt; // timestamp when stake() was called
-        uint64 periods; // lock length in months chosen at stake time
-        uint64 activeFrom; // first epoch this stake earns in (month after staking)
-        uint64 lockEnd; // earning stops & withdraw allowed from here (start of month activeFrom+periods)
-        uint64 lastSettledEpoch; // all epochs <= this are already paid or expired for this user
-        uint256 totalClaimed; // lifetime rewards paid to this wallet
-        uint256 totalExpired; // lifetime rewards this wallet missed (claim window passed)
+    /// @notice One stake position.
+    struct Position {
+        uint256 amount; // principal of this position
+        uint64 id; // per-wallet id, stable for the position's lifetime
+        uint64 stakedAt; // timestamp of stake()
+        uint64 periods; // lock length in months
+        uint64 activeFrom; // first earning epoch (month after staking)
+        uint64 lockEnd; // earning stops & withdraw allowed (start of month activeFrom+periods)
+        uint64 lastSettledEpoch; // epochs <= this are already paid or expired for this position
     }
 
-    /// @notice slot 12 — stake record per wallet. Public getter returns the struct fields in order.
-    mapping(address => UserInfo) public users;
+    /// @notice Per-wallet totals.
+    struct Account {
+        uint256 staked; // principal across open positions
+        uint256 totalClaimed; // lifetime rewards paid
+        uint256 totalExpired; // lifetime rewards forfeited (claim window passed)
+        uint64 nextId; // id for the next position
+    }
 
-    /// @notice slot 13 — principal earning in epoch `lastSyncedEpoch` (and later, until it changes).
+    /// @dev slot 12 — open positions per wallet (withdrawn positions are removed).
+    mapping(address => Position[]) internal _positions;
+    /// @notice slot 13 — per-wallet totals.
+    mapping(address => Account) public accounts;
+    /// @notice slot 14 — principal earning in epoch `lastSyncedEpoch` (and later, until it changes).
     uint256 public activeAmount;
-
-    /// @notice slot 14 — latest epoch whose base weight has been written to storage by _sync().
+    /// @notice slot 15 — latest epoch whose base weight has been written to storage by _sync().
     uint256 public lastSyncedEpoch;
-
     /// @notice epoch => principal that starts earning at the beginning of that epoch.
     mapping(uint256 => uint256) public scheduledActivation;
-
     /// @notice epoch => principal that stops earning at the beginning of that epoch (lock ended).
     mapping(uint256 => uint256) public scheduledDeactivation;
-
     /// @notice epoch => activeAmount × epoch length, snapshotted when the epoch starts.
     mapping(uint256 => uint256) public epochBaseWeight;
-
-    /// @notice epoch => reward pool (reAED) to be split among that epoch's stakers.
+    /// @notice epoch => reward pool (reAED) to be split among that epoch's positions.
     mapping(uint256 => uint256) public epochReward;
-
     /// @notice epoch => rewards already paid out from that epoch's pool.
     mapping(uint256 => uint256) public epochClaimed;
-
     /// @notice epoch => true once its expired/unclaimed rewards were sent to the admin wallet.
     mapping(uint256 => bool) public epochSwept;
-
     /// @notice Lifetime reAED received as rewards.
     uint256 public totalRewardsReceived;
-
     /// @notice Lifetime reAED paid to stakers as rewards.
     uint256 public totalRewardsClaimed;
-
     /// @notice Lifetime reAED taken by the owner via ownerWithdrawRewards().
     uint256 public totalRewardsWithdrawnByOwner;
-
     /// @notice Lifetime expired rewards sent to the admin wallet.
     uint256 public totalExpiredSwept;
 
@@ -179,22 +180,24 @@ contract InfraStakingPool is
     //  EVENTS
     // ════════════════════════════════════════════════════════════════════
 
-    /// @notice A wallet staked `amount`, earning from epoch `activeFrom`, withdrawable after `lockEnd`.
-    event Staked(address indexed user, uint256 amount, uint256 periods, uint256 activeFrom, uint256 lockEnd);
-    /// @notice A wallet's full principal was returned to it during `epoch` (by itself or a releaser).
-    event Withdrawn(address indexed user, uint256 amount, uint256 epoch, address indexed caller);
-    /// @notice A wallet received `amount` rewards covering epochs fromEpoch..toEpoch.
-    event Claimed(address indexed user, uint256 amount, uint256 fromEpoch, uint256 toEpoch);
-    /// @notice A wallet's rewards from closed months expired (claim window passed).
+    /// @notice A wallet opened position `positionId`, earning from epoch `activeFrom`, withdrawable after `lockEnd`.
+    event Staked(
+        address indexed user, uint256 indexed positionId, uint256 amount, uint256 periods, uint256 activeFrom, uint256 lockEnd
+    );
+    /// @notice A position's principal was returned to its owner (by itself or a releaser).
+    event Withdrawn(address indexed user, uint256 indexed positionId, uint256 amount, address caller);
+    /// @notice A wallet received `amount` rewards.
+    event Claimed(address indexed user, uint256 amount);
+    /// @notice Some of a wallet's rewards expired (claim window passed).
     event RewardsExpiredForUser(address indexed user, uint256 amount);
     /// @notice `amount` reAED was added to `epoch`'s reward pool by `from`.
     event RewardsFunded(address indexed from, uint256 indexed epoch, uint256 amount);
     /// @notice Expired rewards of `epoch` were sent to the admin wallet.
     event ExpiredRewardsSwept(uint256 indexed epoch, address indexed adminWallet, uint256 amount);
-    /// @notice The admin wallet (receiver of expired rewards) was changed.
-    event AdminWalletUpdated(address indexed oldWallet, address indexed newWallet);
     /// @notice The dividend pool address was changed.
     event DividendPoolUpdated(address indexed oldPool, address indexed newPool);
+    /// @notice The admin wallet (receiver of expired rewards) was changed.
+    event AdminWalletUpdated(address indexed oldWallet, address indexed newWallet);
     /// @notice Owner withdrew reward (non-principal) funds.
     event OwnerRewardsWithdrawn(address indexed to, uint256 amount);
     /// @notice Owner withdrew funds through the emergency path (may include principal).
@@ -204,18 +207,17 @@ contract InfraStakingPool is
     //  SETUP / UPGRADES
     // ════════════════════════════════════════════════════════════════════
 
-    /// @dev Locks the implementation contract so only the proxy can be initialized.
+    /// @dev Locks the implementation contract so only a proxy can be initialized.
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
 
     /**
-     * @notice One-time setup, called through the proxy at deployment.
+     * @notice One-time setup for a NEW proxy.
      * @param initialOwner  admin of the pool — use the Gnosis Safe multisig address.
-     * @param dividendPool_ address of DividendPoolNativeV2 — the ONLY non-owner source of rewards.
+     * @param dividendPool_ DividendPoolNativeV2 — the ONLY non-owner source of rewards.
      * @param adminWallet_  wallet that receives expired rewards.
-     * @dev Starts month tracking at the deployment month.
      */
     function initialize(address initialOwner, address dividendPool_, address adminWallet_) public initializer {
         require(dividendPool_ != address(0) && adminWallet_ != address(0), "zero address");
@@ -234,7 +236,7 @@ contract InfraStakingPool is
      *         ran StakingPoolFromDividendPoolV2. Call it through
      *         upgradeToAndCall(newImplementation, abi.encodeCall(upgradeToMonthlyPool, (pool, admin))).
      * @dev Refuses to run while the old contract still holds any stake. Clears the old
-     *      accounting; any reAED already sitting in the contract becomes surplus that the
+     *      accounting; reAED already sitting in the contract becomes surplus that the
      *      owner can recover with ownerWithdrawRewards().
      */
     function upgradeToMonthlyPool(address dividendPool_, address adminWallet_) external reinitializer(3) onlyOwner {
@@ -266,23 +268,18 @@ contract InfraStakingPool is
     /**
      * @notice Entry point used by DividendPoolNativeV2.sendRewardsToStaking().
      *         The reAED sent is added to the CURRENT month's reward pool.
-     * @dev Send before the month ends (e.g. last day 23:00 UTC) — anything that
-     *      arrives after midnight UTC counts toward the next month.
      */
     function fundRewardsFromDividendPool() external payable {
         _fund(currentEpoch());
     }
 
-    /// @notice Plain reAED transfers from the dividend pool (sendRewardsToStakingPlain) also fund
+    /// @notice Plain transfers from the dividend pool (sendRewardsToStakingPlain) also fund
     ///         the current month. Transfers from any other address are rejected.
     receive() external payable {
         _fund(currentEpoch());
     }
 
-    /**
-     * @notice Owner can add rewards to the current or a FUTURE month explicitly.
-     * @param epoch target month id (must not be closed already).
-     */
+    /// @notice Owner can add rewards to the current or a FUTURE month explicitly.
     function fundEpoch(uint256 epoch) external payable onlyOwner {
         require(epoch >= currentEpoch(), "Epoch closed");
         _fund(epoch);
@@ -302,118 +299,90 @@ contract InfraStakingPool is
     // ════════════════════════════════════════════════════════════════════
 
     /**
-     * @notice Stake native reAED (send it as msg.value).
+     * @notice Open a new position with native reAED (send it as msg.value).
      * @param periods lock length in months, 1..MAX_PERIODS.
-     *
-     * Rules:
-     *  - Earning starts at the beginning of NEXT month (activeFrom = current + 1).
-     *  - Earns for exactly `periods` months; lockEnd = start of month (activeFrom + periods).
-     *  - One stake per wallet. After the stake is withdrawn/released the wallet can stake again.
+     * @return positionId id of the new position (per wallet).
+     * @dev Earns from the start of NEXT month for exactly `periods` months.
      */
-    function stake(uint256 periods) external payable nonReentrant {
+    function stake(uint256 periods) external payable nonReentrant returns (uint256 positionId) {
         require(msg.value > 0, "Amount=0");
         require(periods >= 1 && periods <= MAX_PERIODS, "Bad periods");
+        require(_positions[msg.sender].length < MAX_POSITIONS, "Too many positions");
         _sync();
 
-        UserInfo storage u = users[msg.sender];
-        require(u.amount == 0, "Already staked");
-
-        uint256 cur = currentEpoch();
-        uint256 activeFrom = cur + 1;
+        uint256 activeFrom = currentEpoch() + 1;
         uint256 lockEnd = epochStart(activeFrom + periods);
 
-        users[msg.sender] = UserInfo({
-            amount: msg.value,
-            stakedAt: uint64(block.timestamp),
-            periods: uint64(periods),
-            activeFrom: uint64(activeFrom),
-            lockEnd: uint64(lockEnd),
-            lastSettledEpoch: uint64(activeFrom - 1),
-            totalClaimed: u.totalClaimed, // lifetime counters carry over
-            totalExpired: u.totalExpired
-        });
+        Account storage a = accounts[msg.sender];
+        positionId = a.nextId;
+        a.nextId += 1;
+        a.staked += msg.value;
+
+        _positions[msg.sender].push(
+            Position({
+                amount: msg.value,
+                id: uint64(positionId),
+                stakedAt: uint64(block.timestamp),
+                periods: uint64(periods),
+                activeFrom: uint64(activeFrom),
+                lockEnd: uint64(lockEnd),
+                lastSettledEpoch: uint64(activeFrom - 1)
+            })
+        );
 
         scheduledActivation[activeFrom] += msg.value;
         scheduledDeactivation[activeFrom + periods] += msg.value;
         totalStaked += msg.value;
 
-        emit Staked(msg.sender, msg.value, periods, activeFrom, lockEnd);
+        emit Staked(msg.sender, positionId, msg.value, periods, activeFrom, lockEnd);
     }
 
     /**
-     * @notice Withdraw your FULL principal after the lock has ended.
-     * @dev Within the 30-day grace period: principal + rewards.
-     *      After it: principal only — expired rewards are recorded and later swept
-     *      to the admin wallet.
-     */
-    function withdraw() external nonReentrant {
-        _release(msg.sender);
-    }
-
-    /**
-     * @notice Return an abandoned stake to its owner. Callable by ANYONE (admin script,
-     *         keeper) once the 30-day grace period after the lock has passed — the
-     *         staker can always call it (or withdraw()) right after the lock.
-     *         Principal always goes to the staker's own wallet; unclaimed rewards
-     *         are forfeited by then (they go to the admin wallet via sweepExpired).
-     */
-    function releaseStake(address user) external nonReentrant {
-        if (msg.sender != user) require(block.timestamp >= graceEnd(user), "Grace period active");
-        _release(user);
-    }
-
-    /**
-     * @notice Batch version of releaseStake. Skips wallets that are still locked,
-     *         still inside their grace period, or have no stake.
-     * @dev Reverts if a wallet rejects native transfers (remove it and retry).
-     */
-    function releaseStakes(address[] calldata list) external nonReentrant {
-        for (uint256 i = 0; i < list.length; i++) {
-            UserInfo storage u = users[list[i]];
-            if (u.amount > 0 && (block.timestamp >= graceEnd(list[i]) || (msg.sender == list[i] && block.timestamp >= u.lockEnd))) {
-                _release(list[i]);
-            }
-        }
-    }
-
-    /// @notice When others may release this wallet's stake: lock end + 30-day grace period.
-    function graceEnd(address user) public view returns (uint256) {
-        return uint256(users[user].lockEnd) + CLAIM_WINDOW;
-    }
-
-    /// @dev Pays claimable rewards, returns principal to `user`, clears the stake.
-    function _release(address user) internal {
-        UserInfo storage u = users[user];
-        require(u.amount > 0, "No stake found");
-        require(block.timestamp >= u.lockEnd, "Lock not expired");
-        _sync();
-
-        _settle(user); // all earning months are closed by now; pay what is still claimable
-
-        uint256 amount = u.amount;
-        u.amount = 0;
-        totalStaked -= amount;
-
-        _send(user, amount);
-        emit Withdrawn(user, amount, currentEpoch(), msg.sender);
-    }
-
-    /**
-     * @notice Claim rewards from all CLOSED months that are still within their
-     *         30-day claim window. Reverts with "No rewards" if nothing is due.
+     * @notice Claim rewards of all closed months (inside their 30-day window) across ALL
+     *         of your positions. Reverts with "No rewards" if nothing is due.
      */
     function claim() external nonReentrant {
         _sync();
-        uint256 paid = _settle(msg.sender);
+        uint256 paid = _settleAll(msg.sender);
         require(paid > 0, "No rewards");
     }
 
     /**
+     * @notice Withdraw one position after its lock ended.
+     * @dev Within the 30-day grace period: principal + that position's claimable rewards.
+     *      After it: principal only — expired rewards go to the admin wallet via sweepExpired.
+     */
+    function withdraw(uint256 positionId) external nonReentrant {
+        _sync();
+        uint256 idx = _indexOf(msg.sender, positionId);
+        _release(msg.sender, idx);
+    }
+
+    /// @notice Withdraw every position whose lock has ended. Reverts if none.
+    function withdrawAll() external nonReentrant {
+        _sync();
+        uint256 n = _releaseEnded(msg.sender, 0);
+        require(n > 0, "Lock not expired");
+    }
+
+    /**
+     * @notice After lock + 30-day grace, ANYONE (admin script, keeper) may return abandoned
+     *         positions to their owners. Principal always goes to the staker's own wallet.
+     * @dev Skips positions still locked or inside their grace period.
+     *      Reverts if a wallet rejects native transfers (remove it and retry).
+     */
+    function releaseStakes(address[] calldata list) external nonReentrant {
+        _sync();
+        for (uint256 i = 0; i < list.length; i++) {
+            _releaseEnded(list[i], CLAIM_WINDOW);
+        }
+    }
+
+    /**
      * @notice Send a closed month's expired (unclaimed) rewards to the ADMIN WALLET.
-     *         Callable by anyone (admin script / keeper); funds only ever go to adminWallet.
-     * @param epoch the closed month to sweep.
-     * @dev Allowed after its 30-day claim window, or immediately if that month had
-     *      no stakers (total weight 0). Each month can be swept once.
+     *         Callable by anyone; funds only ever go to adminWallet.
+     * @dev Allowed after its 30-day claim window, or immediately if that month had no
+     *      stakers (total weight 0). Each month can be swept once.
      */
     function sweepExpired(uint256 epoch) external nonReentrant {
         _sync();
@@ -451,8 +420,8 @@ contract InfraStakingPool is
     /**
      * @notice Withdraw REWARD funds only. Can never touch stakers' principal
      *         (limited to contract balance − totalStaked).
-     * @dev Note: this can include rewards stakers have not claimed yet; withdrawing
-     *      those will make their claims fail until the pool is refunded.
+     * @dev This can include rewards stakers have not claimed yet; withdrawing those makes
+     *      their claims fail until the pool is refunded.
      */
     function ownerWithdrawRewards(address payable to, uint256 amount) external onlyOwner nonReentrant {
         require(to != address(0), "to=0");
@@ -464,8 +433,7 @@ contract InfraStakingPool is
 
     /**
      * @notice EMERGENCY: withdraw ANY amount, including stakers' principal.
-     * @dev Same behaviour as DividendPoolNativeV2.emergencyWithdraw. Keep the owner
-     *      on a multisig; stakers must trust the owner with this power.
+     * @dev Keep the owner on a multisig; stakers must trust the owner with this power.
      */
     function emergencyWithdraw(address payable to, uint256 amount) external onlyOwner nonReentrant {
         require(to != address(0), "to=0");
@@ -478,6 +446,16 @@ contract InfraStakingPool is
     // ════════════════════════════════════════════════════════════════════
     //  VIEWS (for the website and scripts)
     // ════════════════════════════════════════════════════════════════════
+
+    /// @notice All OPEN positions of a wallet.
+    function positionsOf(address user) external view returns (Position[] memory) {
+        return _positions[user];
+    }
+
+    /// @notice Number of open positions of a wallet.
+    function positionCount(address user) external view returns (uint256) {
+        return _positions[user].length;
+    }
 
     /// @notice Id of the running month (UTC).
     function currentEpoch() public view returns (uint256) {
@@ -505,15 +483,9 @@ contract InfraStakingPool is
         return epochEnd(epoch) + CLAIM_WINDOW;
     }
 
-    /**
-     * @notice Total weight of a month (sum of all stakers' weights).
-     * @dev Stakes always earn full months, so a month's total is known as soon as it starts.
-     */
+    /// @notice Total weight of a month (all positions earning that month).
     function totalWeight(uint256 epoch) public view returns (uint256) {
-        if (epoch <= lastSyncedEpoch) {
-            return epochBaseWeight[epoch];
-        }
-        // not synced yet: simulate _sync() without writing
+        if (epoch <= lastSyncedEpoch) return epochBaseWeight[epoch];
         uint256 active = activeAmount;
         for (uint256 e = lastSyncedEpoch + 1; e <= epoch; e++) {
             active = active + scheduledActivation[e] - scheduledDeactivation[e];
@@ -521,40 +493,38 @@ contract InfraStakingPool is
         return active * (epochEnd(epoch) - epochStart(epoch));
     }
 
-    /**
-     * @notice One wallet's weight in a month.
-     * @return amount × month length for the stake's lock months
-     *         (activeFrom .. activeFrom + periods - 1); 0 for any other month.
-     */
-    function userWeight(address user, uint256 epoch) public view returns (uint256) {
-        UserInfo storage u = users[user];
-        if (u.amount == 0 || epoch < u.activeFrom || epoch >= u.activeFrom + u.periods) return 0;
-        return u.amount * (epochEnd(epoch) - epochStart(epoch));
+    /// @notice A wallet's weight in a month (sum over its open positions).
+    function userWeight(address user, uint256 epoch) public view returns (uint256 w) {
+        Position[] storage ps = _positions[user];
+        for (uint256 i = 0; i < ps.length; i++) w += _positionWeight(ps[i], epoch);
     }
 
-    /// @notice A wallet's reward from a given month = month pool × userWeight ÷ totalWeight
-    ///         (whether or not it is still claimable).
-    function userEpochReward(address user, uint256 epoch) public view returns (uint256) {
-        uint256 w = userWeight(user, epoch);
-        if (w == 0) return 0;
+    /// @notice A wallet's reward from a given month across its open positions
+    ///         (whether or not still claimable).
+    function userEpochReward(address user, uint256 epoch) public view returns (uint256 r) {
         uint256 tw = totalWeight(epoch);
-        return tw == 0 ? 0 : (epochReward[epoch] * w) / tw;
+        if (tw == 0) return 0;
+        Position[] storage ps = _positions[user];
+        for (uint256 i = 0; i < ps.length; i++) r += (epochReward[epoch] * _positionWeight(ps[i], epoch)) / tw;
     }
 
     /**
-     * @notice What the wallet can claim right now.
+     * @notice What the wallet can claim right now across all positions.
      * @return amount       total claimable from closed months inside their window
      * @return nextDeadline earliest claim deadline among those months (0 if none)
      */
     function pendingRewards(address user) public view returns (uint256 amount, uint256 nextDeadline) {
-        (uint256 from, uint256 to) = _settleRange(user);
-        for (uint256 e = from; e <= to && to != type(uint256).max; e++) {
-            uint256 r = userEpochReward(user, e);
-            if (r > 0 && block.timestamp < claimDeadline(e) && !epochSwept[e]) {
-                amount += r;
-                if (nextDeadline == 0) nextDeadline = claimDeadline(e);
-            }
+        Position[] storage ps = _positions[user];
+        for (uint256 i = 0; i < ps.length; i++) {
+            (uint256 a, uint256 d) = _pendingOf(ps[i]);
+            amount += a;
+            if (d != 0 && (nextDeadline == 0 || d < nextDeadline)) nextDeadline = d;
         }
+    }
+
+    /// @notice Claimable rewards of one position (index in positionsOf).
+    function pendingOfPosition(address user, uint256 index) external view returns (uint256 amount, uint256 nextDeadline) {
+        return _pendingOf(_positions[user][index]);
     }
 
     /**
@@ -579,15 +549,7 @@ contract InfraStakingPool is
     function epochInfo(uint256 epoch)
         external
         view
-        returns (
-            uint256 start,
-            uint256 end,
-            uint256 deadline,
-            uint256 reward,
-            uint256 weight,
-            uint256 claimed,
-            bool swept
-        )
+        returns (uint256 start, uint256 end, uint256 deadline, uint256 reward, uint256 weight, uint256 claimed, bool swept)
     {
         return (
             epochStart(epoch),
@@ -610,11 +572,7 @@ contract InfraStakingPool is
     //  INTERNALS
     // ════════════════════════════════════════════════════════════════════
 
-    /**
-     * @dev Writes the base weight of every month reached since the last sync:
-     *      activeAmount += stakes starting that month − stakes whose lock ended,
-     *      then baseWeight = activeAmount × month length. Called by every state change.
-     */
+    /// @dev Writes base weight of every month reached since the last sync.
     function _sync() internal {
         uint256 cur = currentEpoch();
         uint256 e = lastSyncedEpoch;
@@ -628,34 +586,44 @@ contract InfraStakingPool is
         lastSyncedEpoch = cur;
     }
 
-    /**
-     * @dev Closed months not yet settled for `user`: [from, to].
-     *      Returns to = type(uint256).max when there is nothing to settle.
-     */
-    function _settleRange(address user) internal view returns (uint256 from, uint256 to) {
-        UserInfo storage u = users[user];
-        if (u.amount == 0) return (1, type(uint256).max);
+    /// @dev Weight of one position in one month (whole months only).
+    function _positionWeight(Position storage p, uint256 epoch) internal view returns (uint256) {
+        if (epoch < p.activeFrom || epoch >= uint256(p.activeFrom) + p.periods) return 0;
+        return p.amount * (epochEnd(epoch) - epochStart(epoch));
+    }
+
+    /// @dev Closed earning months not yet settled for a position: [from, to]; to = max if none.
+    function _range(Position storage p) internal view returns (uint256 from, uint256 to) {
         uint256 cur = currentEpoch();
-        from = uint256(u.lastSettledEpoch) + 1;
-        if (cur == 0) return (1, type(uint256).max);
+        from = uint256(p.lastSettledEpoch) + 1;
         to = cur - 1;
-        uint256 lastEarning = uint256(u.activeFrom) + u.periods - 1;
+        uint256 lastEarning = uint256(p.activeFrom) + p.periods - 1;
         if (lastEarning < to) to = lastEarning;
         if (to < from) return (1, type(uint256).max);
     }
 
-    /**
-     * @dev Goes through the user's unsettled closed months:
-     *      - inside the 30-day window → pays the reward,
-     *      - window passed / month already swept → records it as expired (no payout).
-     *      Marks those months settled. Returns the amount paid.
-     */
-    function _settle(address user) internal returns (uint256 paid) {
-        (uint256 from, uint256 to) = _settleRange(user);
-        if (to == type(uint256).max) return 0;
-        uint256 expired;
+    function _pendingOf(Position storage p) internal view returns (uint256 amount, uint256 nextDeadline) {
+        (uint256 from, uint256 to) = _range(p);
+        if (to == type(uint256).max) return (0, 0);
         for (uint256 e = from; e <= to; e++) {
-            uint256 r = userEpochReward(user, e);
+            uint256 tw = totalWeight(e);
+            if (tw == 0) continue;
+            uint256 r = (epochReward[e] * _positionWeight(p, e)) / tw;
+            if (r > 0 && block.timestamp < claimDeadline(e) && !epochSwept[e]) {
+                amount += r;
+                if (nextDeadline == 0) nextDeadline = claimDeadline(e);
+            }
+        }
+    }
+
+    /// @dev Settles one position's closed months: returns (paid, expired). Does not transfer.
+    function _settle(Position storage p) internal returns (uint256 paid, uint256 expired) {
+        (uint256 from, uint256 to) = _range(p);
+        if (to == type(uint256).max) return (0, 0);
+        for (uint256 e = from; e <= to; e++) {
+            uint256 tw = totalWeight(e);
+            if (tw == 0) continue;
+            uint256 r = (epochReward[e] * _positionWeight(p, e)) / tw;
             if (r == 0) continue;
             if (block.timestamp < claimDeadline(e) && !epochSwept[e]) {
                 paid += r;
@@ -664,17 +632,75 @@ contract InfraStakingPool is
                 expired += r;
             }
         }
-        UserInfo storage u = users[user];
-        u.lastSettledEpoch = uint64(to);
+        p.lastSettledEpoch = uint64(to);
+    }
+
+    /// @dev Settles all positions of `user`, pays the total. Returns amount paid.
+    function _settleAll(address user) internal returns (uint256 paid) {
+        Position[] storage ps = _positions[user];
+        uint256 expired;
+        for (uint256 i = 0; i < ps.length; i++) {
+            (uint256 pd, uint256 ex) = _settle(ps[i]);
+            paid += pd;
+            expired += ex;
+        }
+        _book(user, paid, expired);
+        if (paid > 0) _send(user, paid);
+    }
+
+    /// @dev Records claimed / expired totals and emits events (no transfer).
+    function _book(address user, uint256 paid, uint256 expired) internal {
+        Account storage a = accounts[user];
         if (expired > 0) {
-            u.totalExpired += expired;
+            a.totalExpired += expired;
             emit RewardsExpiredForUser(user, expired);
         }
         if (paid > 0) {
-            u.totalClaimed += paid;
+            a.totalClaimed += paid;
             totalRewardsClaimed += paid;
-            _send(user, paid);
-            emit Claimed(user, paid, from, to);
+            emit Claimed(user, paid);
+        }
+    }
+
+    /// @dev Index of a position id in the user's open positions.
+    function _indexOf(address user, uint256 positionId) internal view returns (uint256) {
+        Position[] storage ps = _positions[user];
+        for (uint256 i = 0; i < ps.length; i++) if (ps[i].id == positionId) return i;
+        revert("No stake found");
+    }
+
+    /// @dev Settles + pays one position's rewards, returns its principal, removes it (swap & pop).
+    function _release(address user, uint256 idx) internal {
+        Position[] storage ps = _positions[user];
+        Position storage p = ps[idx];
+        require(block.timestamp >= p.lockEnd, "Lock not expired");
+
+        (uint256 paid, uint256 expired) = _settle(p);
+        _book(user, paid, expired);
+
+        uint256 amount = p.amount;
+        uint256 id = p.id;
+        accounts[user].staked -= amount;
+        totalStaked -= amount;
+
+        ps[idx] = ps[ps.length - 1];
+        ps.pop();
+
+        _send(user, amount + paid);
+        emit Withdrawn(user, id, amount, msg.sender);
+    }
+
+    /// @dev Releases every position of `user` whose lock ended at least `delay` ago. Returns count.
+    function _releaseEnded(address user, uint256 delay) internal returns (uint256 n) {
+        Position[] storage ps = _positions[user];
+        uint256 i = 0;
+        while (i < ps.length) {
+            if (block.timestamp >= uint256(ps[i].lockEnd) + delay) {
+                _release(user, i); // swap & pop: re-check the same index
+                n++;
+            } else {
+                i++;
+            }
         }
     }
 
@@ -710,6 +736,6 @@ contract InfraStakingPool is
         if (m <= 2) y += 1;
     }
 
-    /// @dev Reserved storage slots so future upgrades can add variables safely.
-    uint256[25] private __gap; // slots 25–49 (previous __gap ended at slot 49)
+    /// @dev Reserved storage slots for future upgrades (slots 26–49; previous __gap ended at 49).
+    uint256[24] private __gap;
 }
