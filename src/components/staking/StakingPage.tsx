@@ -10,6 +10,7 @@ import { RewardsPanel } from "@/components/staking/RewardsPanel";
 import { HowItWorksCard } from "@/components/staking/HowItWorksCard";
 import { CycleTimeline } from "@/components/staking/CycleTimeline";
 import { Tour, type TourStep } from "@/components/staking/Tour";
+import { Num } from "@/components/motion/Num";
 import { cyclesAround, fmtDate } from "@/lib/cycles";
 import { EmptyPanel, GuideBanner, GuideTabs, PositionPanel, type GuideState, type GuideTab } from "@/components/staking/StakeGuide";
 import { SuccessOverlay, type SuccessKind, type SuccessState } from "@/components/staking/SuccessOverlay";
@@ -363,26 +364,28 @@ export function StakingPage() {
       <main className="wrap pb-12 pt-6 sm:pt-8">
         <section className="mb-3 grid gap-4 lg:grid-cols-[1.3fr_1fr] lg:items-end">
           <div className="grid gap-3">
-            <span className="pill justify-self-start">
+            <span className="pill justify-self-start" data-rv>
               <span className="pd">Live</span> Dividend pool on {appChain.name}
             </span>
             <h1 className="text-[clamp(1.8rem,3.6vw,2.6rem)]">
-              Stake reAED.
-              <span className="block text-[var(--blue)]">Earn network revenue.</span>
+              <span className="hl-line"><span>Stake reAED.</span></span>
+              <span className="hl-line text-[var(--blue)]"><span style={{ ["--d" as string]: "120ms" }}>Earn network revenue.</span></span>
             </h1>
-            <p className="max-w-[480px] text-[0.92rem] text-[var(--t2)]">
+            <p className="max-w-[480px] text-[0.92rem] text-[var(--t2)]" data-rv style={{ ["--d" as string]: "200ms" }}>
               No inflation. No emissions. Rewards are paid from real INFRA network fees, shared by weight across
               monthly cycles.
             </p>
             <button
               onClick={() => setTourSignal((n) => n + 1)}
               className="justify-self-start text-[0.85rem] font-medium text-[var(--blue)] hover:underline"
+              data-rv
+              style={{ ["--d" as string]: "280ms" }}
             >
               New here? Take the 1-minute tour →
             </button>
           </div>
 
-          <div className="tile dark" data-tour="pool">
+          <div className="tile dark" data-tour="pool" data-rv style={{ ["--d" as string]: "150ms" }}>
             <div className="flex items-center justify-between">
               <span className="live">
                 <i /> Pool balance
@@ -390,7 +393,7 @@ export function StakingPage() {
               <span className="mono text-[0.7rem] text-white/40">Refreshes every 10s</span>
             </div>
             <div className="text-[clamp(1.6rem,3vw,2.1rem)] font-semibold leading-none tracking-[-0.04em]">
-              {formatToken(poolInfo.totalLocked, 2)}
+              <Num value={formatToken(poolInfo.totalLocked, 2)} />
               <span className="mono ml-2 text-[0.9rem] font-normal tracking-normal text-white/50">{symbol}</span>
             </div>
             <div className="hr" />
@@ -407,11 +410,11 @@ export function StakingPage() {
           <StatsCards cards={stats} />
         </div>
 
-        <div className="mt-3" data-tour="guide">
+        <div className="mt-3" data-tour="guide" data-rv>
           <GuideBanner state={guide} symbol={symbol} go={goTab} />
         </div>
 
-        <section ref={tabsRef} className="mt-3 grid scroll-mt-20 grid-cols-1 gap-3 lg:grid-cols-[1.35fr_1fr]">
+        <section ref={tabsRef} data-rv className="mt-3 grid scroll-mt-20 grid-cols-1 gap-3 lg:grid-cols-[1.35fr_1fr]">
           <div className="grid content-start gap-3">
             <GuideTabs
               tab={activeTab}
@@ -420,7 +423,7 @@ export function StakingPage() {
               dots={{ claim: canClaim, earning: hasStake }}
             />
 
-            <div className="grid content-start gap-3" data-tour="panel">
+            <div className="tab-panel grid content-start gap-3" data-tour="panel" key={activeTab}>
             {activeTab === "earning" ? (
               hasStake ? (
                 <>

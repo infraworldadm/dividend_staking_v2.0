@@ -79,7 +79,7 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.035em; line-height: 1.02; text
 @keyframes pl { 0% { box-shadow: 0 0 0 0 rgba(31, 91, 255, 0.7) } 100% { box-shadow: 0 0 0 9px rgba(31, 91, 255, 0) } }
 
 /* buttons: fill sweeps up on hover */
-.btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 42px; padding: 0 18px; border-radius: 10px; font-size: 0.88rem; font-weight: 500; overflow: hidden; isolation: isolate; border: 0; cursor: pointer; transition: color 0.4s var(--ease), opacity 0.3s }
+.btn { position: relative; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 42px; padding: 0 18px; border-radius: 10px; font-size: 0.88rem; font-weight: 500; overflow: hidden; isolation: isolate; border: 0; cursor: pointer; transition: color 0.4s var(--ease), opacity 0.3s }
 .btn::before { content: ""; position: absolute; inset: 0; z-index: -1; transform: scaleY(0); transform-origin: bottom; transition: transform 0.55s var(--ease) }
 .btn:hover:not(:disabled)::before { transform: scaleY(1) }
 .btn svg { width: 16px; height: 16px; transition: transform 0.55s var(--ease) }
@@ -202,3 +202,103 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.035em; line-height: 1.02; text
 .tour-flow span { padding: 8px 4px; border-radius: 8px; background: var(--field); color: var(--t1); font-weight: 500; line-height: 1.25 }
 .tour-flow span small { display: block; font-weight: 400; color: var(--t3); font-size: 0.66rem }
 @media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card, .tour-dim { transition: none; animation: none } }
+
+/* =====================  DARK THEME  ===================== */
+html[data-theme="dark"] {
+  --field: #07080b;
+  --white: #101218;
+  --black: #1a1e27;
+  --t1: #f2f4f8;
+  --t2: rgba(242, 244, 248, 0.66);
+  --t3: rgba(242, 244, 248, 0.44);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.16);
+  --blue-soft: #14234a;
+  --blue-d: #9db6ff;
+  color-scheme: dark;
+}
+html[data-theme="dark"] .nav { background: rgba(7, 8, 11, 0.78) }
+html[data-theme="dark"] .brand-logo { filter: invert(1) hue-rotate(180deg) }
+html[data-theme="dark"] .amb i { background: radial-gradient(circle, rgba(31, 91, 255, 0.22), transparent 62%) }
+html[data-theme="dark"] .pill { background: var(--white) }
+html[data-theme="dark"] .pill .pd,
+html[data-theme="dark"] .btn-k,
+html[data-theme="dark"] .seg button[aria-pressed="true"],
+html[data-theme="dark"] .tabs button[aria-selected="true"] { background: #f2f4f8; color: #0a0b0e }
+html[data-theme="dark"] .btn-k:hover:not(:disabled) { color: #fff }
+html[data-theme="dark"] .btn-w { background: #f2f4f8; color: #0a0b0e }
+html[data-theme="dark"] .tile.dark { background: #161a22; box-shadow: inset 0 0 0 1px var(--line-2) }
+html[data-theme="dark"] .st-claim { background: rgba(245, 158, 11, 0.14); color: #fbbf24 }
+html[data-theme="dark"] .err { color: #fdba74 }
+html[data-theme="dark"] .succ-withdraw .succ-ring, html[data-theme="dark"] .succ-withdraw .succ-mark,
+html[data-theme="dark"] .succ-withdraw .succ-timer { stroke: #f2f4f8; background: #f2f4f8 }
+html[data-theme="dark"] .succ, html[data-theme="dark"] .tour-dim { background: rgba(0, 0, 0, 0.6) }
+html[data-theme="dark"] .tour-spot { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.62), 0 0 0 2px var(--blue) }
+html[data-theme="dark"] .tile { box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 rgba(255, 255, 255, 0.02) }
+
+/* theme toggle */
+.theme-btn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; color: var(--t2); box-shadow: inset 0 0 0 1px var(--line-2); transition: color 0.3s, background 0.3s }
+.theme-btn:hover { color: var(--t1); background: var(--white) }
+.theme-btn svg { width: 16px; height: 16px; transition: transform 0.6s var(--ease) }
+.theme-btn:hover svg { transform: rotate(40deg) }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.45s; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1) }
+
+/* =====================  MOTION  ===================== */
+/* entrance: elements with [data-rv] rise in; --d staggers them */
+[data-rv] { opacity: 0; transform: translateY(14px); transition: opacity 0.8s var(--ease), transform 0.8s var(--ease); transition-delay: var(--d, 0ms) }
+[data-rv].in { opacity: 1; transform: none }
+/* children stagger */
+[data-rv-kids] > * { opacity: 0; transform: translateY(12px); transition: opacity 0.7s var(--ease), transform 0.7s var(--ease) }
+[data-rv-kids].in > * { opacity: 1; transform: none }
+[data-rv-kids].in > *:nth-child(2) { transition-delay: 70ms }
+[data-rv-kids].in > *:nth-child(3) { transition-delay: 140ms }
+[data-rv-kids].in > *:nth-child(4) { transition-delay: 210ms }
+[data-rv-kids].in > *:nth-child(n + 5) { transition-delay: 280ms }
+
+/* headline word mask reveal */
+.hl-line { display: block; overflow: hidden; padding-bottom: 0.06em }
+.hl-line > span { display: inline-block; transform: translateY(105%); animation: hlUp 1s var(--ease) forwards; animation-delay: var(--d, 0ms) }
+@keyframes hlUp { to { transform: none } }
+
+/* tiles: lift + cursor-follow blue edge (pointer position set by Motion.tsx) */
+.tile { transition: transform 0.5s var(--ease), box-shadow 0.4s var(--ease) }
+.tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; opacity: 0; transition: opacity 0.4s;
+  background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), var(--blue), transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0) }
+.tile:hover::after { opacity: 1 }
+.tile.blue::after { background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), #fff, transparent 70%) }
+@media (hover: hover) { .tile.lift:hover { transform: translateY(-3px); box-shadow: inset 0 0 0 1px var(--line-2), 0 14px 34px -18px rgba(10, 11, 14, 0.35) } }
+
+/* tab panel switch */
+.tab-panel { animation: panelIn 0.5s var(--ease) }
+@keyframes panelIn { from { opacity: 0; transform: translateY(8px) } }
+
+/* number change flash */
+.num { display: inline-block; font-variant-numeric: tabular-nums }
+.num.bump { animation: bump 0.6s var(--ease) }
+@keyframes bump { 30% { color: var(--blue) } }
+
+/* ambient drift */
+.amb i:first-child { animation: dr1 22s ease-in-out infinite alternate }
+.amb i:last-child { animation: dr2 26s ease-in-out infinite alternate }
+@keyframes dr1 { to { transform: translate(-12vw, 18vh) scale(1.12) } }
+@keyframes dr2 { to { transform: translate(14vw, -16vh) scale(0.9) } }
+
+/* progress bars grow */
+.bar-fill { transition: width 1.2s var(--ease) }
+.bar-fill.grow { animation: grow 1.4s var(--ease) both }
+@keyframes grow { from { width: 0 !important } }
+
+/* chips, tabs micro-interactions */
+.chips button:active, .tabs button:active, .seg button:active { transform: scale(0.97) }
+.chips button, .tabs button, .seg button { transition: all 0.3s var(--ease), transform 0.15s }
+.field { transition: box-shadow 0.3s, transform 0.3s var(--ease) }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-rv], [data-rv-kids] > * { opacity: 1 !important; transform: none !important; transition: none !important }
+  .hl-line > span { transform: none; animation: none }
+  .amb i, .tab-panel, .num.bump, .bar-fill.grow { animation: none !important }
+  .tile, .tile.lift:hover { transition: none; transform: none }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none }
+}

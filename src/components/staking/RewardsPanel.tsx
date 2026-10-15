@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import { Num } from "@/components/motion/Num";
 
 type RewardsPanelProps = {
   pendingRewards: string;
@@ -28,7 +29,7 @@ export function RewardsPanel({
       </span>
       <div>
         <div className="text-[clamp(1.8rem,3.4vw,2.3rem)] font-semibold leading-none tracking-[-0.04em]">
-          {pendingRewards}
+          <Num value={pendingRewards} />
         </div>
         <div className="mono mt-1 text-[0.75rem] text-white/70">{symbol}</div>
       </div>

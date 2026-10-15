@@ -32,7 +32,7 @@ export function CycleTimeline() {
 
   return (
     <section className="mt-3 grid gap-3" data-tour="cycles">
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-3" data-rv-kids>
         <div className="tile">
           <div className="flex items-center justify-between">
             <span className="lbl">Previous · {previous.label}</span>
@@ -55,7 +55,7 @@ export function CycleTimeline() {
           </div>
           <div className="text-[1.15rem] font-semibold tracking-[-0.02em]">Ends in {formatCountdown(current.end - now)}</div>
           <div className="h-1 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-[var(--blue)]" style={{ width: `${progress * 100}%` }} />
+            <div className="bar-fill grow h-full rounded-full bg-[var(--blue)]" style={{ width: `${progress * 100}%` }} />
           </div>
           <p className="text-[0.8rem]">
             {fmtDate(current.start)} → {fmtEnd(current.end)} · claimable until {fmtDate(current.claimUntil)}
@@ -76,7 +76,7 @@ export function CycleTimeline() {
         </div>
       </div>
 
-      <div className="tile !p-0">
+      <div className="tile !p-0" data-rv>
         <div className="flex flex-wrap items-center justify-between gap-2 px-[18px] pt-4">
           <span className="lbl">
             <i /> Cycle history

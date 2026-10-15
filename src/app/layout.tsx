@@ -4,6 +4,8 @@ import { GeistMono } from "geist/font/mono";
 import "@rainbow-me/rainbowkit/styles.css";
 import "./globals.css";
 import { WalletProvider } from "@/components/providers/WalletProvider";
+import { Motion } from "@/components/motion/Motion";
+import { themeInitScript } from "@/components/motion/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "INFRA Staking — Dividend Pool",
@@ -12,13 +14,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
         <div className="amb" aria-hidden>
           <i />
           <i />
         </div>
         <WalletProvider>{children}</WalletProvider>
+        <Motion />
       </body>
     </html>
   );

@@ -62,7 +62,7 @@ function Banner({ tone, eyebrow, title, body, children }: {
   tone: "white" | "dark" | "blue"; eyebrow: string; title: string; body: string; children: ReactNode;
 }) {
   return (
-    <div className={`tile guide ${tone === "white" ? "" : tone}`}>
+    <div className={`tile guide ${tone === "white" ? "" : tone}`} key={eyebrow}>
       <div className="grid min-w-0 gap-1.5">
         <span className={tone === "dark" ? "live" : `lbl ${tone === "white" ? "b" : ""}`}>
           <i /> {eyebrow}
@@ -111,7 +111,7 @@ export function PositionPanel({ staked, symbol, cycle, progress, share, unlockIn
       <div className="grid gap-1.5">
         <div className="row"><span>{cycle} cycle progress</span><span className="mono text-[0.75rem]">{Math.floor(progress * 100)}%</span></div>
         <div className="h-1 overflow-hidden rounded-full bg-[var(--field)]">
-          <div className="h-full rounded-full bg-[var(--blue)]" style={{ width: `${progress * 100}%` }} />
+          <div className="bar-fill grow h-full rounded-full bg-[var(--blue)]" style={{ width: `${progress * 100}%` }} />
         </div>
       </div>
       <div className="grid gap-1.5 rounded-xl bg-[var(--field)] px-3.5 py-3">
