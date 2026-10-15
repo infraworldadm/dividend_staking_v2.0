@@ -103,6 +103,19 @@ export const stakingPoolAbi = [
   },
   {
     "type": "function",
+    "name": "allowedPeriods",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "list",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "claim",
     "inputs": [],
     "outputs": [],
@@ -409,6 +422,25 @@ export const stakingPoolAbi = [
   },
   {
     "type": "function",
+    "name": "isAllowedPeriod",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "lastSyncedEpoch",
     "inputs": [],
     "outputs": [
@@ -423,6 +455,19 @@ export const stakingPoolAbi = [
   {
     "type": "function",
     "name": "legacyTotalLocked",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "openPositions",
     "inputs": [],
     "outputs": [
       {
@@ -658,6 +703,24 @@ export const stakingPoolAbi = [
   },
   {
     "type": "function",
+    "name": "setAllowedPeriod",
+    "inputs": [
+      {
+        "name": "periods",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "allowed",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setDividendPool",
     "inputs": [
       {
@@ -687,6 +750,19 @@ export const stakingPoolAbi = [
       }
     ],
     "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "stakerCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -881,6 +957,25 @@ export const stakingPoolAbi = [
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "AllowedPeriodSet",
+    "inputs": [
+      {
+        "name": "periods",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "allowed",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
       }
     ],
     "anonymous": false

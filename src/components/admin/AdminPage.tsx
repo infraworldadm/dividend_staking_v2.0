@@ -47,6 +47,10 @@ export function AdminPage() {
       { ...sp, functionName: "totalRewardsClaimed" },
       { ...sp, functionName: "totalExpiredSwept" },
       { ...sp, functionName: "epochReward", args: [BigInt(curId)] },
+      { ...sp, functionName: "stakerCount" },
+      { ...sp, functionName: "openPositions" },
+      { ...sp, functionName: "allowedPeriods" },
+      { ...sp, functionName: "totalWeight", args: [BigInt(curId)] },
     ],
     query: { enabled: isStakingConfigured, refetchInterval: 15_000 },
   });
@@ -73,6 +77,8 @@ export function AdminPage() {
     query: { enabled: Boolean(dividend), refetchInterval: 15_000 },
   });
 
+  const { data: poolBal } = useBalance({ address: stakingPoolAddress, query: { refetchInterval: 15_000 } });
+  const allowed = ((r(11) as readonly bigint[] | undefined) ?? []).map(Number);
   const isOwner = same(address, owner);
   const isDvOwner = same(address, dvOwner);
   const linked = same(linkedTo, stakingPoolAddress);
@@ -95,8 +101,9 @@ export function AdminPage() {
     return { e, label: cycleOfEpoch(e).label, reward, claimed, swept, deadline, left, sweepable, open: now < deadline && weight > 0n };
   });
 
-  // ---- abandoned stakes (past lock + grace) from Staked events ----
-  const [abandoned, setAbandoned] = useState<{ user: Address; amount: bigint; count: number }[]>([]);
+  // ---- every open position (from Staked events → positionsOf) ----
+  type Pos = { user: Address; amount: bigint; periods: number; activeFrom: number; lockEnd: number };
+  const [allPos, setAllPos] = useState<Pos[]>([]);
   const [scanKey, setScanKey] = useState(0);
   const [scanning, setScanning] = useState(false);
   useEffect(() => {
@@ -110,18 +117,21 @@ export function AdminPage() {
           args: { user: Address };
         }[];
         const users = Array.from(new Set(logs.map((l) => l.args.user)));
-        const out: { user: Address; amount: bigint; count: number }[] = [];
+        const out: Pos[] = [];
         for (const user of users) {
           const ps = (await client.readContract({ ...sp, functionName: "positionsOf", args: [user] })) as readonly {
             amount: bigint;
+            periods: bigint;
+            activeFrom: bigint;
             lockEnd: bigint;
           }[];
-          const due = ps.filter((p) => now >= Number(p.lockEnd) + CLAIM_BUFFER_DAYS * 86400);
-          if (due.length) out.push({ user, amount: due.reduce((a, p) => a + p.amount, 0n), count: due.length });
+          ps.forEach((p) =>
+            out.push({ user, amount: p.amount, periods: Number(p.periods), activeFrom: Number(p.activeFrom), lockEnd: Number(p.lockEnd) }),
+          );
         }
-        if (!cancelled) setAbandoned(out);
+        if (!cancelled) setAllPos(out);
       } catch {
-        if (!cancelled) setAbandoned([]);
+        if (!cancelled) setAllPos([]);
       } finally {
         if (!cancelled) setScanning(false);
       }
@@ -131,6 +141,34 @@ export function AdminPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, scanKey]);
+
+  const GRACE = CLAIM_BUFFER_DAYS * 86400;
+  type St = "queued" | "earning" | "grace" | "abandoned";
+  const statusOf = (p: Pos): St =>
+    now >= p.lockEnd + GRACE ? "abandoned" : now >= p.lockEnd ? "grace" : curId < p.activeFrom ? "queued" : "earning";
+  const sum = (xs: Pos[]) => xs.reduce((a, p) => a + p.amount, 0n);
+  const byStatus = (st: St) => allPos.filter((p) => statusOf(p) === st);
+  const byPeriod = Array.from(new Set([...allowed, ...allPos.map((p) => p.periods)]))
+    .sort((a, b) => a - b)
+    .map((m) => ({ m, list: allPos.filter((p) => p.periods === m) }));
+  // principal unlocking per month (lockEnd = 1st of that month); 13 months covers the longest lock (12) + joining month
+  const schedule = Array.from({ length: 13 }, (_, k) => cycleOfEpoch(curId + 1 + k)).map((c) => {
+    const list = allPos.filter((p) => p.lockEnd === c.start);
+    return { label: c.label, start: c.start, list };
+  });
+  const stakers = Array.from(new Set(allPos.map((p) => p.user))).map((user) => {
+    const list = allPos.filter((p) => p.user === user);
+    const nextUnlock = list.map((p) => p.lockEnd).filter((t) => t > now).sort((a, b) => a - b)[0];
+    const states = list.map(statusOf);
+    const worst: St = states.includes("abandoned") ? "abandoned" : states.includes("grace") ? "grace" : states.includes("earning") ? "earning" : "queued";
+    return { user, list, total: sum(list), nextUnlock, worst };
+  }).sort((a, b) => (b.total > a.total ? 1 : -1));
+  const abandoned = stakers
+    .map((x) => ({ user: x.user, list: x.list.filter((p) => statusOf(p) === "abandoned") }))
+    .filter((x) => x.list.length)
+    .map((x) => ({ user: x.user, amount: sum(x.list), count: x.list.length }));
+  const ST_CHIP: Record<St, string> = { queued: "st-next", earning: "st-active", grace: "st-claim", abandoned: "st-closed" };
+  const ST_TEXT: Record<St, string> = { queued: "Starts next month", earning: "Earning", grace: "In grace", abandoned: "Past grace" };
 
   // ---- writes ----
   const { writeContract, data: hash, error, isPending, reset } = useWriteContract();
@@ -179,6 +217,120 @@ export function AdminPage() {
           <span className={`st ${isOwner ? "st-active" : "st-closed"}`}>
             {address ? (isOwner ? "Connected as staking owner" : "Not the owner — view only") : "Connect the owner wallet"}
           </span>
+        </div>
+
+        {/* 0. Overview */}
+        <div className="tile !gap-2.5">
+          <span className="lbl"><i /> Overview · {current.label}</span>
+          <div className="adm-grid">
+            <div><span>Stakers (wallets)</span><b>{String(r(9) ?? 0n)}</b></div>
+            <div><span>Open positions</span><b>{String(r(10) ?? 0n)}</b></div>
+            <div><span>Total staked (principal)</span><b>{formatToken(big(3), 2)} {SYMBOL}</b></div>
+            <div><span>Staking contract balance</span><b>{formatToken(poolBal?.value ?? 0n, 2)} {SYMBOL}</b></div>
+            <div><span>Earning in {current.label}</span><b>{formatToken(sum(byStatus("earning")), 2)} {SYMBOL}</b></div>
+            <div><span>Joining next month</span><b>{formatToken(sum(byStatus("queued")), 2)} {SYMBOL}</b></div>
+            <div><span>Dividend pool (to send)</span><b>{formatToken(dvBal?.value ?? 0n, 2)} {SYMBOL}</b></div>
+            <div><span>{current.label} reward pool so far</span><b>{formatToken(big(8), 2)} {SYMBOL}</b></div>
+          </div>
+          <div className="adm-grid">
+            <div><span>Withdrawable now (in grace)</span><b>{formatToken(sum(byStatus("grace")), 2)} {SYMBOL}</b><small>{byStatus("grace").length} positions</small></div>
+            <div><span>Past grace (to release)</span><b>{formatToken(sum(byStatus("abandoned")), 2)} {SYMBOL}</b><small>{byStatus("abandoned").length} positions</small></div>
+            <div><span>Unlocking next month</span><b>{formatToken(sum(schedule[0].list), 2)} {SYMBOL}</b><small>on {fmtDate(schedule[0].start)}</small></div>
+            <div><span>Rewards held (surplus)</span><b>{formatToken(big(4), 2)} {SYMBOL}</b><small>incl. unclaimed</small></div>
+          </div>
+        </div>
+
+        {/* Lock lengths + release schedule */}
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="tile !gap-2">
+            <span className="lbl"><i /> Stakes by lock length</span>
+            <table className="cyc !mt-0 !min-w-0">
+              <thead><tr><th>Lock</th><th>Positions</th><th>Amount</th><th>New stakes</th></tr></thead>
+              <tbody>
+                {byPeriod.map(({ m, list }) => (
+                  <tr key={m}>
+                    <td className="font-medium">{m} {m === 1 ? "month" : "months"}</td>
+                    <td className="mono">{list.length}</td>
+                    <td className="mono">{formatToken(sum(list), 2)}</td>
+                    <td>
+                      <button
+                        className={`st ${allowed.includes(m) ? "st-active" : "st-closed"}`}
+                        disabled={!isOwner || busy}
+                        title={isOwner ? "Click to toggle" : "Owner only"}
+                        onClick={() => writeContract({ ...sp, functionName: "setAllowedPeriod", args: [BigInt(m), !allowed.includes(m)] })}
+                      >
+                        {allowed.includes(m) ? "Offered" : "Off"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {isOwner ? (
+              <div className="flex flex-wrap items-center gap-1.5 text-[0.75rem] text-[var(--t3)]">
+                Add lock option:
+                {Array.from({ length: 12 }, (_, k) => k + 1)
+                  .filter((m) => !allowed.includes(m))
+                  .map((m) => (
+                    <button key={m} className="st st-next" disabled={busy} onClick={() => writeContract({ ...sp, functionName: "setAllowedPeriod", args: [BigInt(m), true] })}>
+                      + {m}m
+                    </button>
+                  ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="tile !gap-2">
+            <span className="lbl"><i /> Release schedule (principal unlocking)</span>
+            <table className="cyc !mt-0 !min-w-0">
+              <thead><tr><th>Unlocks on</th><th>Positions</th><th>Amount</th><th>Grace until</th></tr></thead>
+              <tbody>
+                {schedule.filter((x) => x.list.length).length === 0 ? (
+                  <tr><td colSpan={4} className="mono text-[var(--t3)]">{scanning ? "Scanning…" : "No unlocks in the next 13 months."}</td></tr>
+                ) : (
+                  schedule.filter((x) => x.list.length).map((x) => (
+                    <tr key={x.start}>
+                      <td className="font-medium">{fmtDate(x.start)}</td>
+                      <td className="mono">{x.list.length}</td>
+                      <td className="mono">{formatToken(sum(x.list), 2)}</td>
+                      <td>{fmtDate(x.start + GRACE)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Stakers */}
+        <div className="tile !gap-2">
+          <div className="flex items-center justify-between">
+            <span className="lbl"><i /> Stakers · {stakers.length}</span>
+            <button className="text-[0.8rem] text-[var(--blue)]" onClick={() => setScanKey((k) => k + 1)}>{scanning ? "Scanning…" : "Rescan"}</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="cyc !mt-0 !min-w-[720px]">
+              <thead><tr><th>Wallet</th><th>Positions</th><th>Staked</th><th>Locks</th><th>Next unlock</th><th>Status</th></tr></thead>
+              <tbody>
+                {stakers.length === 0 ? (
+                  <tr><td colSpan={6} className="mono text-[var(--t3)]">{scanning ? "Scanning…" : "No open positions."}</td></tr>
+                ) : (
+                  stakers.map((x) => (
+                    <tr key={x.user}>
+                      <td className="mono">
+                        {explorer ? <a className="hover:text-[var(--blue)]" href={`${explorer}/address/${x.user}`} target="_blank" rel="noreferrer">{short(x.user)}</a> : short(x.user)}
+                      </td>
+                      <td className="mono">{x.list.length}</td>
+                      <td className="mono">{formatToken(x.total, 2)}</td>
+                      <td className="mono">{Array.from(new Set(x.list.map((p) => p.periods))).sort((a, b) => a - b).map((m) => `${m}m`).join(", ")}</td>
+                      <td>{x.nextUnlock ? fmtDate(x.nextUnlock) : "—"}</td>
+                      <td><span className={`st ${ST_CHIP[x.worst]}`}>{ST_TEXT[x.worst]}</span></td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* 1. Setup & link */}

@@ -22,9 +22,10 @@ type StakePanelProps = {
   /** reference reward pool used for the illustration (this month so far) */
   refPool: bigint;
   refLabel: string;
+  /** lock options from the contract */
+  periodOptions: number[];
 };
 
-const PERIOD_OPTIONS = [1, 2, 3, 6, 12];
 
 /** Stake form: amount, lock months, and exactly which months the stake will earn in. */
 export function StakePanel({
@@ -43,6 +44,7 @@ export function StakePanel({
   nextJoinTotal,
   refPool,
   refLabel,
+  periodOptions,
 }: StakePanelProps) {
   let amt = 0n;
   try {
@@ -97,8 +99,8 @@ export function StakePanel({
           <span>Lock period</span>
           <span className="mono text-[0.75rem] text-[var(--t3)]">earns in each locked month</span>
         </div>
-        <div className="chips">
-          {PERIOD_OPTIONS.map((p) => (
+        <div className="chips" style={{ ["--n" as string]: periodOptions.length }}>
+          {periodOptions.map((p) => (
             <button key={p} aria-pressed={periods === p} onClick={() => setPeriods(p)}>
               {p} mo
             </button>

@@ -22,7 +22,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  *    - Epoch id = year * 12 + (month - 1). Example: October 2026 = 2026*12 + 9 = 24321.
  *
  *  Staking — MULTIPLE POSITIONS PER WALLET
- *    - Every stake() opens a new POSITION with its own amount and lock (1..12 months).
+ *    - Every stake() opens a new POSITION with its own amount and lock. Accepted locks are
+ *      set by the owner (default 1, 2, 6, 8, 9 or 12 months; see setAllowedPeriod).
  *      A wallet can hold up to MAX_POSITIONS open positions at the same time.
  *    - A position opened during month M becomes ACTIVE at the start of month M+1
  *      (the running month is closed to new stakes).
@@ -175,6 +176,12 @@ contract InfraStakingPool is
     uint256 public totalRewardsWithdrawnByOwner;
     /// @notice Lifetime expired rewards sent to the admin wallet.
     uint256 public totalExpiredSwept;
+    /// @notice slot 26 — lock lengths (in months) that stake() accepts. Default: 1, 2, 6, 8, 9, 12.
+    mapping(uint256 => bool) public isAllowedPeriod;
+    /// @notice slot 27 — wallets with at least one open position.
+    uint256 public stakerCount;
+    /// @notice slot 28 — open positions across all wallets.
+    uint256 public openPositions;
 
     // ════════════════════════════════════════════════════════════════════
     //  EVENTS
@@ -198,6 +205,8 @@ contract InfraStakingPool is
     event DividendPoolUpdated(address indexed oldPool, address indexed newPool);
     /// @notice The admin wallet (receiver of expired rewards) was changed.
     event AdminWalletUpdated(address indexed oldWallet, address indexed newWallet);
+    /// @notice A lock length was enabled or disabled for new stakes.
+    event AllowedPeriodSet(uint256 periods, bool allowed);
     /// @notice Owner withdrew reward (non-principal) funds.
     event OwnerRewardsWithdrawn(address indexed to, uint256 amount);
     /// @notice Owner withdrew funds through the emergency path (may include principal).
@@ -227,6 +236,7 @@ contract InfraStakingPool is
         dividendPool = dividendPool_;
         adminWallet = adminWallet_;
         lastSyncedEpoch = currentEpoch();
+        _setDefaultPeriods();
         emit DividendPoolUpdated(address(0), dividendPool_);
         emit AdminWalletUpdated(address(0), adminWallet_);
     }
@@ -256,6 +266,16 @@ contract InfraStakingPool is
         dividendPool = dividendPool_;
         adminWallet = adminWallet_;
         lastSyncedEpoch = currentEpoch();
+        _setDefaultPeriods();
+    }
+
+    /// @dev Lock options offered on the website: 1, 2, 6, 8, 9 and 12 months.
+    function _setDefaultPeriods() internal {
+        uint8[6] memory d = [1, 2, 6, 8, 9, 12];
+        for (uint256 i = 0; i < d.length; i++) {
+            isAllowedPeriod[d[i]] = true;
+            emit AllowedPeriodSet(d[i], true);
+        }
     }
 
     /// @dev Only the owner can upgrade the implementation (UUPS).
@@ -306,7 +326,7 @@ contract InfraStakingPool is
      */
     function stake(uint256 periods) external payable nonReentrant returns (uint256 positionId) {
         require(msg.value > 0, "Amount=0");
-        require(periods >= 1 && periods <= MAX_PERIODS, "Bad periods");
+        require(periods >= 1 && periods <= MAX_PERIODS && isAllowedPeriod[periods], "Bad periods");
         require(_positions[msg.sender].length < MAX_POSITIONS, "Too many positions");
         _sync();
 
@@ -318,6 +338,8 @@ contract InfraStakingPool is
         a.nextId += 1;
         a.staked += msg.value;
 
+        if (_positions[msg.sender].length == 0) stakerCount += 1;
+        openPositions += 1;
         _positions[msg.sender].push(
             Position({
                 amount: msg.value,
@@ -410,6 +432,13 @@ contract InfraStakingPool is
         dividendPool = newPool;
     }
 
+    /// @notice Enable or disable a lock length (1..12 months) for NEW stakes. Existing positions are unaffected.
+    function setAllowedPeriod(uint256 periods, bool allowed) external onlyOwner {
+        require(periods >= 1 && periods <= MAX_PERIODS, "Bad periods");
+        isAllowedPeriod[periods] = allowed;
+        emit AllowedPeriodSet(periods, allowed);
+    }
+
     /// @notice Change the wallet that receives expired rewards.
     function setAdminWallet(address newWallet) external onlyOwner {
         require(newWallet != address(0), "wallet=0");
@@ -450,6 +479,15 @@ contract InfraStakingPool is
     /// @notice All OPEN positions of a wallet.
     function positionsOf(address user) external view returns (Position[] memory) {
         return _positions[user];
+    }
+
+    /// @notice Lock lengths currently accepted by stake(), ascending.
+    function allowedPeriods() external view returns (uint256[] memory list) {
+        uint256 n;
+        for (uint256 p = 1; p <= MAX_PERIODS; p++) if (isAllowedPeriod[p]) n++;
+        list = new uint256[](n);
+        n = 0;
+        for (uint256 p = 1; p <= MAX_PERIODS; p++) if (isAllowedPeriod[p]) list[n++] = p;
     }
 
     /// @notice Number of open positions of a wallet.
@@ -685,6 +723,8 @@ contract InfraStakingPool is
 
         ps[idx] = ps[ps.length - 1];
         ps.pop();
+        openPositions -= 1;
+        if (ps.length == 0) stakerCount -= 1;
 
         _send(user, amount + paid);
         emit Withdrawn(user, id, amount, msg.sender);
@@ -736,6 +776,6 @@ contract InfraStakingPool is
         if (m <= 2) y += 1;
     }
 
-    /// @dev Reserved storage slots for future upgrades (slots 26–49; previous __gap ended at 49).
-    uint256[24] private __gap;
+    /// @dev Reserved storage slots for future upgrades (slots 29–49; previous __gap ended at 49).
+    uint256[21] private __gap;
 }

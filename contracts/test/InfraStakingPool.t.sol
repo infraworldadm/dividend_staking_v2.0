@@ -48,6 +48,8 @@ contract InfraStakingPoolTest is Test {
         );
         vm.prank(owner);
         dividend.setStakingContract(address(pool));
+        vm.prank(owner);
+        pool.setAllowedPeriod(3, true); // several tests use a 3-month lock (Nov–Jan)
         vm.deal(alice, 1_000 ether);
         vm.deal(bob, 1_000 ether);
         vm.deal(feePayer, 1_000_000 ether);
@@ -117,6 +119,63 @@ contract InfraStakingPoolTest is Test {
         uint256 c = _stake(alice, 25 ether, 1);
         assertEq(c, 2);
         assertEq(pool.userWeight(alice, E_DEC), 75 ether * 31 days);
+    }
+
+    function test_allowedPeriods() public {
+        // fresh pool: defaults only
+        InfraStakingPool impl = new InfraStakingPool();
+        InfraStakingPool p2 = InfraStakingPool(
+            payable(new ERC1967Proxy(address(impl), abi.encodeCall(InfraStakingPool.initialize, (owner, address(dividend), adminWallet))))
+        );
+        uint256[] memory list = p2.allowedPeriods();
+        assertEq(list.length, 6);
+        assertEq(list[0], 1);
+        assertEq(list[1], 2);
+        assertEq(list[2], 6);
+        assertEq(list[3], 8);
+        assertEq(list[4], 9);
+        assertEq(list[5], 12);
+        uint256[6] memory bad = [uint256(3), 4, 5, 7, 10, 11];
+        for (uint256 i = 0; i < bad.length; i++) {
+            vm.prank(alice);
+            vm.expectRevert("Bad periods");
+            p2.stake{value: 1 ether}(bad[i]);
+        }
+        vm.prank(alice);
+        vm.expectRevert("Bad periods");
+        p2.stake{value: 1 ether}(13);
+        vm.prank(alice);
+        p2.stake{value: 1 ether}(9);
+        // only owner can change; existing positions unaffected
+        vm.prank(alice);
+        vm.expectRevert();
+        p2.setAllowedPeriod(4, true);
+        vm.prank(owner);
+        p2.setAllowedPeriod(9, false);
+        vm.prank(alice);
+        vm.expectRevert("Bad periods");
+        p2.stake{value: 1 ether}(9);
+        assertEq(p2.positionCount(alice), 1);
+    }
+
+    function test_stakerAndPositionCounters() public {
+        _stake(alice, 1 ether, 1);
+        _stake(alice, 1 ether, 2);
+        _stake(bob, 1 ether, 1);
+        assertEq(pool.stakerCount(), 2);
+        assertEq(pool.openPositions(), 3);
+        vm.warp(DEC_1 + 1);
+        vm.prank(bob);
+        pool.withdrawAll();
+        vm.prank(alice);
+        pool.withdrawAll();
+        assertEq(pool.stakerCount(), 1);
+        assertEq(pool.openPositions(), 1);
+        vm.warp(JAN_1 + 1);
+        vm.prank(alice);
+        pool.withdrawAll();
+        assertEq(pool.stakerCount(), 0);
+        assertEq(pool.openPositions(), 0);
     }
 
     function test_positionCap() public {

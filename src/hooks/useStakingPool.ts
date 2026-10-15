@@ -32,6 +32,7 @@ export function useStakingPool() {
       { ...base, functionName: "positionsOf", args: [who] },
       { ...base, functionName: "totalWeight", args: [nextId] },
       { ...base, functionName: "epochReward", args: [prevId] },
+      { ...base, functionName: "allowedPeriods" },
     ],
     query: { enabled: isStakingConfigured, refetchInterval: 10_000 },
   });
@@ -102,6 +103,8 @@ export function useStakingPool() {
     /** principal earning in the running month */
     currentActiveTotal: share[2] / BigInt(around.current.end - around.current.start),
     lastMonthPool: big(data?.[9]?.result),
+    /** lock lengths the contract accepts (falls back to the default set) */
+    allowedPeriods: ((data?.[10]?.result as readonly bigint[] | undefined) ?? [1n, 2n, 6n, 8n, 9n, 12n]).map(Number),
     dividendPoolBalance: dividendBal?.value ?? 0n,
     refetch: () => {
       refetch();

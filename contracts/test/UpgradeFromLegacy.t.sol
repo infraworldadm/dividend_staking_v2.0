@@ -81,6 +81,9 @@ contract UpgradeFromLegacyTest is Test {
         assertEq(pool.lastSyncedEpoch(), pool.currentEpoch());
         assertEq(pool.surplusBalance(), leftover); // old leftover is recoverable surplus
         assertEq(pool.positionCount(alice), 0); // old leftover user data does not leak into the new records
+        assertEq(pool.allowedPeriods().length, 6); // defaults set by the upgrade
+        assertTrue(pool.isAllowedPeriod(12));
+        assertFalse(pool.isAllowedPeriod(3));
 
         // new monthly flow on the upgraded proxy
         vm.prank(alice);

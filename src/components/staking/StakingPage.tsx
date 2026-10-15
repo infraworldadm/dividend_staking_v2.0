@@ -61,8 +61,8 @@ export function StakingPage() {
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const pending = useRef<{ kind: SuccessKind; amount: string } | null>(null);
   const closeSuccess = useCallback(() => setSuccess(null), []);
-  const [tab, setTabState] = useState<GuideTab>("stake");
-  const tabTouched = useRef(false);
+  // null = follow the wallet's state; set once the user picks a tab
+  const [tab, setTabState] = useState<GuideTab | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [tourSignal, setTourSignal] = useState(0);
 
@@ -217,11 +217,8 @@ export function StakingPage() {
 
   // Default tab follows the wallet's state until the user picks one.
   const autoTab: GuideTab = endedCount > 0 ? "earning" : canClaim ? "claim" : hasStake ? "earning" : "stake";
-  const activeTab = tabTouched.current ? tab : autoTab;
-  const setTab = (t: GuideTab) => {
-    tabTouched.current = true;
-    setTabState(t);
-  };
+  const activeTab: GuideTab = tab ?? autoTab;
+  const setTab = (t: GuideTab) => setTabState(t);
   const goTab = (t: GuideTab) => {
     setTab(t);
     tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -551,6 +548,7 @@ export function StakingPage() {
                     nextJoinTotal={s.nextJoinTotal}
                     refPool={poolNow}
                     refLabel={`${curCycle.label.split(" ")[0]} so far`}
+                    periodOptions={s.allowedPeriods}
                   />
                 )
               ) : null}
