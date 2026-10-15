@@ -1,0 +1,9 @@
+{
+  "name": "infra-staking-contracts",
+  "private": true,
+  "description": "INFRA monthly staking pool (Foundry). Kept separate from the Next.js app.",
+  "devDependencies": {
+    "@openzeppelin/contracts": "5.2.0",
+    "@openzeppelin/contracts-upgradeable": "5.2.0"
+  }
+}
