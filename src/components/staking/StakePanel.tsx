@@ -24,6 +24,9 @@ type StakePanelProps = {
   withdrawDisabledReason: string | null;
   busy: boolean;
   symbol: string;
+  /** Hide the Stake/Unstake switch (mode is driven by the page tabs). */
+  lockMode?: boolean;
+  title?: string;
 };
 
 export function StakePanel({
@@ -48,6 +51,8 @@ export function StakePanel({
   withdrawDisabledReason,
   busy,
   symbol,
+  lockMode,
+  title,
 }: StakePanelProps) {
   const inStakeMode = mode === "stake";
   const unlockDate = new Date(Date.now() + periods * 30 * 86400 * 1000).toLocaleDateString(undefined, {
@@ -62,11 +67,12 @@ export function StakePanel({
     <div className="tile !gap-3.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="lbl b">
-          <i /> INFRA Real Yield
+          <i /> {title || "INFRA Real Yield"}
         </span>
         <span className="mono text-[0.72rem] text-[var(--t3)]">Wallet · {walletBalance} {symbol}</span>
       </div>
 
+      {lockMode ? null : (
       <div className="seg" role="group" aria-label="Action">
         <button aria-pressed={inStakeMode} onClick={() => setMode("stake")}>
           Stake
@@ -75,6 +81,7 @@ export function StakePanel({
           Unstake
         </button>
       </div>
+      )}
 
       {inStakeMode ? (
         <>
@@ -123,10 +130,6 @@ export function StakePanel({
               <span>Unlocks on</span>
               <span className="font-medium">{unlockDate}</span>
             </div>
-            <div className="row">
-              <span>{weightMetricLabel}</span>
-              <span className="font-medium">{weightMetricValue}</span>
-            </div>
           </div>
         </>
       ) : (
@@ -142,7 +145,7 @@ export function StakePanel({
           <div className="grid gap-1.5 rounded-xl bg-[var(--field)] px-3.5 py-3">
             <div className="row">
               <span>{weightMetricLabel}</span>
-              <span className="font-medium text-[#c2410c]">{weightMetricValue}</span>
+              <span className="font-medium">{weightMetricValue}</span>
             </div>
           </div>
         </>

@@ -9,7 +9,8 @@ import { StakePanel } from "@/components/staking/StakePanel";
 import { RewardsPanel } from "@/components/staking/RewardsPanel";
 import { HowItWorksCard } from "@/components/staking/HowItWorksCard";
 import { CycleTimeline } from "@/components/staking/CycleTimeline";
-import { cyclesAround } from "@/lib/cycles";
+import { cyclesAround, fmtDate } from "@/lib/cycles";
+import { EmptyPanel, GuideBanner, GuideTabs, PositionPanel, type GuideState, type GuideTab } from "@/components/staking/StakeGuide";
 import { SuccessOverlay, type SuccessKind, type SuccessState } from "@/components/staking/SuccessOverlay";
 import { useDividendPoolReads } from "@/hooks/useDividendPoolReads";
 import { useDividendPoolWrites } from "@/hooks/useDividendPoolWrites";
@@ -38,6 +39,9 @@ export function StakingPage() {
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const pending = useRef<{ kind: SuccessKind; amount: string } | null>(null);
   const closeSuccess = useCallback(() => setSuccess(null), []);
+  const [tab, setTabState] = useState<GuideTab>("stake");
+  const tabTouched = useRef(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
 
   const { isConnected, address, poolInfo, userInfo, refetch } = useDividendPoolReads();
   const { data: wallet } = useBalance({ address });
@@ -148,8 +152,76 @@ export function StakingPage() {
     },
   ];
 
+  const nowSec = Math.floor(Date.now() / 1000);
+  const { current: curCycle, previous: prevCycle, next: nextCycle } = cyclesAround(nowSec);
+  const cycleProgress = Math.min(1, Math.max(0, (nowSec - curCycle.start) / (curCycle.end - curCycle.start)));
+  const hasStake = userInfo.amount > 0n;
+  const claimExpired = userInfo.rewardExpiryAt > 0n && rewardExpirySeconds === 0;
+  const canClaim = userInfo.pendingClaimable > 0n && !claimExpired;
+  const claimDeadline = fmtDate(userInfo.rewardExpiryAt > 0n ? Number(userInfo.rewardExpiryAt) : prevCycle.claimUntil);
+  const sharePct =
+    poolInfo.totalWeight > 0n ? Number((userInfo.weight * 1_000_000n) / poolInfo.totalWeight) / 10_000 : 0;
+  const share = `${sharePct.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+
+  const guide: GuideState = !isConnected
+    ? { kind: "disconnected" }
+    : canClaim
+      ? {
+          kind: "claim",
+          amount: pendingRewards,
+          deadline: claimDeadline,
+          countdown: userInfo.rewardExpiryAt > 0n ? formatCountdown(rewardExpirySeconds) : formatCountdown(prevCycle.claimUntil - nowSec),
+        }
+      : hasStake
+        ? { kind: "earning", amount: formatToken(userInfo.amount, 2), cycle: curCycle.label, share }
+        : { kind: "idle", nextCycle: nextCycle.label, nextStart: fmtDate(nextCycle.start) };
+
+  // Default tab follows the wallet's state until the user picks one.
+  const autoTab: GuideTab = canClaim ? "claim" : hasStake ? "earning" : "stake";
+  const activeTab = tabTouched.current ? tab : autoTab;
+  const setTab = (t: GuideTab) => {
+    tabTouched.current = true;
+    setTabState(t);
+    setMode(t === "earning" ? "withdraw" : "stake");
+  };
+  const goTab = (t: GuideTab) => {
+    setTab(t);
+    tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const explorer = appChain.blockExplorers?.default.url.replace(/\/$/, "");
   const shortPool = `${dividendPoolAddress.slice(0, 6)}…${dividendPoolAddress.slice(-4)}`;
+
+  const panelProps = (m: "stake" | "withdraw") => ({
+    mode: m,
+    setMode,
+    amount,
+    setAmount,
+    periods,
+    setPeriods,
+    walletBalance,
+    walletBalanceRaw,
+    stakedAmount,
+    weightMetricLabel: "Your share of pool weight",
+    weightMetricValue: share,
+    termsAccepted,
+    setTermsAccepted,
+    onStake: () => {
+      pending.current = { kind: "stake" as const, amount: amount || "0" };
+      stake(amount, periods);
+    },
+    onWithdraw: () => {
+      pending.current = { kind: "withdraw" as const, amount: stakedAmount };
+      withdraw();
+    },
+    isStakeDisabled: Boolean(stakeDisabledReason),
+    stakeDisabledReason: stakeDisabledReason || contractError,
+    isWithdrawDisabled: Boolean(withdrawDisabledReason),
+    withdrawDisabledReason: withdrawDisabledReason || contractError,
+    busy,
+    symbol,
+    lockMode: true,
+  });
 
   return (
     <>
@@ -193,74 +265,102 @@ export function StakingPage() {
 
         <StatsCards cards={stats} />
 
-        <section className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1.35fr_1fr]">
-          <StakePanel
-            mode={mode}
-            setMode={setMode}
-            amount={amount}
-            setAmount={setAmount}
-            periods={periods}
-            setPeriods={setPeriods}
-            walletBalance={walletBalance}
-            walletBalanceRaw={walletBalanceRaw}
-            stakedAmount={stakedAmount}
-            weightMetricLabel={mode === "stake" ? "Weight accumulated" : "Weight lost"}
-            weightMetricValue={mode === "stake" ? "0.00%" : "0.00%"}
-            termsAccepted={termsAccepted}
-            setTermsAccepted={setTermsAccepted}
-            onStake={() => {
-              pending.current = { kind: "stake", amount: amount || "0" };
-              stake(amount, periods);
-            }}
-            onWithdraw={() => {
-              pending.current = { kind: "withdraw", amount: stakedAmount };
-              withdraw();
-            }}
-            isStakeDisabled={Boolean(stakeDisabledReason)}
-            stakeDisabledReason={stakeDisabledReason || contractError}
-            isWithdrawDisabled={Boolean(withdrawDisabledReason)}
-            withdrawDisabledReason={withdrawDisabledReason || contractError}
-            busy={busy}
-            symbol={symbol}
-          />
+        <div className="mt-3">
+          <GuideBanner state={guide} symbol={symbol} go={goTab} />
+        </div>
 
+        <section ref={tabsRef} className="mt-3 grid scroll-mt-20 grid-cols-1 gap-3 lg:grid-cols-[1.35fr_1fr]">
           <div className="grid content-start gap-3">
-            <RewardsPanel
-              pendingRewards={pendingRewards}
-              symbol={symbol}
-              rewardExpiryIn={
-                userInfo.pendingClaimable > 0n && userInfo.rewardExpiryAt > 0n
-                  ? formatCountdown(rewardExpirySeconds)
-                  : "--"
-              }
-              onClaim={() => {
-                pending.current = { kind: "claim", amount: pendingRewards };
-                claim();
-              }}
-              isClaimDisabled={Boolean(claimDisabledReason)}
-              claimDisabledReason={claimDisabledReason || contractError}
-              busy={busy}
+            <GuideTabs
+              tab={activeTab}
+              setTab={setTab}
+              labels={{ earning: `Earning now · ${curCycle.label.split(" ")[0]}`, claim: "Claim", stake: `Stake for ${nextCycle.label.split(" ")[0]}` }}
+              dots={{ claim: canClaim, earning: hasStake }}
             />
 
-            <div className="tile">
-              <span className="lbl">
-                <i /> Your position
-              </span>
-              <div className="row">
-                <span>Unlocks in</span>
-                <span className="mono text-[0.85rem]">
-                  {userInfo.amount > 0n ? formatCountdown(unlockInSeconds) : "--"}
-                </span>
-              </div>
-              <div className="hr" />
-              <div className="row">
-                <span>Total claimed</span>
-                <span className="mono text-[0.85rem]">
-                  {formatToken(userInfo.totalClaimed, 2)} {symbol}
-                </span>
-              </div>
-            </div>
+            {activeTab === "earning" ? (
+              hasStake ? (
+                <>
+                  <PositionPanel
+                    staked={formatToken(userInfo.amount, 2)}
+                    symbol={symbol}
+                    cycle={curCycle.label}
+                    progress={cycleProgress}
+                    share={share}
+                    unlockIn={formatCountdown(unlockInSeconds)}
+                    unlocked={unlockInSeconds === 0}
+                    totalClaimed={formatToken(userInfo.totalClaimed, 2)}
+                  />
+                  <StakePanel {...panelProps("withdraw")} title="Unstake" />
+                </>
+              ) : (
+                <EmptyPanel
+                  label={`Earning now · ${curCycle.label}`}
+                  title="You don’t have an active stake"
+                  body={`Stake now to join the ${nextCycle.label} cycle. Earning starts ${fmtDate(nextCycle.start)}.`}
+                  cta={`Stake for ${nextCycle.label}`}
+                  onCta={() => setTab("stake")}
+                />
+              )
+            ) : null}
 
+            {activeTab === "claim" ? (
+              <>
+                <RewardsPanel
+                  pendingRewards={pendingRewards}
+                  symbol={symbol}
+                  rewardExpiryIn={canClaim ? `${formatCountdown(rewardExpirySeconds || prevCycle.claimUntil - nowSec)} · by ${claimDeadline}` : "--"}
+                  onClaim={() => {
+                    pending.current = { kind: "claim", amount: pendingRewards };
+                    claim();
+                  }}
+                  isClaimDisabled={Boolean(claimDisabledReason)}
+                  claimDisabledReason={claimDisabledReason || contractError}
+                  busy={busy}
+                />
+                <div className="tile !gap-2">
+                  <span className="lbl"><i /> How claiming works</span>
+                  <p className="text-[0.84rem] text-[var(--t2)]">
+                    When a monthly cycle closes, your weight share of that month’s distribution becomes claimable.
+                    You have 30 days to claim; after that, unclaimed rewards expire.
+                  </p>
+                  <div className="row"><span>Last closed cycle</span><span className="font-medium">{prevCycle.label}</span></div>
+                  <div className="row"><span>Claim deadline</span><span className="font-medium">{claimDeadline}</span></div>
+                  <div className="row"><span>Total claimed to date</span><span className="font-medium">{formatToken(userInfo.totalClaimed, 2)} {symbol}</span></div>
+                </div>
+              </>
+            ) : null}
+
+            {activeTab === "stake" ? (
+              hasStake ? (
+                <EmptyPanel
+                  label={`Stake for ${nextCycle.label}`}
+                  title="You already have an active stake"
+                  body="The pool allows one active stake per wallet. Your stake keeps earning each cycle until you unstake after the lock ends."
+                  cta="View my position"
+                  onCta={() => setTab("earning")}
+                />
+              ) : (
+                <StakePanel {...panelProps("stake")} title={`Stake for ${nextCycle.label} rewards`} />
+              )
+            ) : null}
+          </div>
+
+          <div className="grid content-start gap-3">
+            <div className="tile">
+              <span className="lbl"><i /> Where to go</span>
+              <button className="row w-full text-left" onClick={() => goTab("earning")}>
+                <span>Already staked?</span><span className="font-medium text-[var(--blue)]">Earning now →</span>
+              </button>
+              <div className="hr" />
+              <button className="row w-full text-left" onClick={() => goTab("claim")}>
+                <span>Cycle finished?</span><span className="font-medium text-[var(--blue)]">Claim rewards →</span>
+              </button>
+              <div className="hr" />
+              <button className="row w-full text-left" onClick={() => goTab("stake")}>
+                <span>New here?</span><span className="font-medium text-[var(--blue)]">Stake for {nextCycle.label} →</span>
+              </button>
+            </div>
             <HowItWorksCard />
           </div>
         </section>
