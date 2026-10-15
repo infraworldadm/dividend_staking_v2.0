@@ -184,9 +184,14 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.035em; line-height: 1.02; text
 
 /* guided tour */
 .tour { position: fixed; inset: 0; z-index: 90 }
-.tour-dim { position: absolute; inset: 0; background: rgba(10, 11, 14, 0.55); animation: fadeIn 0.3s var(--ease) }
-.tour-spot { position: fixed; border-radius: 16px; box-shadow: 0 0 0 9999px rgba(10, 11, 14, 0.55), 0 0 0 2px var(--blue); transition: all 0.45s var(--ease); pointer-events: none }
-.tour-card { position: fixed; background: var(--white); border-radius: 16px; padding: 16px 18px; display: grid; gap: 10px; box-shadow: 0 24px 70px rgba(10, 11, 14, 0.35); animation: pop 0.4s var(--ease) }
+.tour-dim { position: absolute; inset: 0; background: rgba(10, 11, 14, 0.55); transition: opacity 0.35s var(--ease); animation: fadeIn 0.3s var(--ease) }
+.tour-dim.off { opacity: 0 }
+.tour-spot { position: fixed; border-radius: 16px; box-shadow: 0 0 0 9999px rgba(10, 11, 14, 0.55), 0 0 0 2px var(--blue); transition: top 0.5s var(--ease), left 0.5s var(--ease), width 0.5s var(--ease), height 0.5s var(--ease), opacity 0.35s; pointer-events: none }
+.tour-spot.off { opacity: 0 }
+.tour-card { position: fixed; background: var(--white); border-radius: 16px; padding: 16px 18px; display: grid; gap: 10px; box-shadow: 0 24px 70px rgba(10, 11, 14, 0.35); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity 0.35s var(--ease), transform 0.45s var(--ease) }
+.tour-card.show { opacity: 1; transform: none; pointer-events: auto }
+.tour-card.center { transform: translate(-50%, calc(-50% + 8px)) }
+.tour-card.center.show { transform: translate(-50%, -50%) }
 .tour-body { font-size: 0.86rem; color: var(--t2); display: grid; gap: 8px; line-height: 1.55 }
 .tour-body b { color: var(--t1); font-weight: 500 }
 .tour-x { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--t3) }
@@ -201,7 +206,7 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.035em; line-height: 1.02; text
 .tour-flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; font-size: 0.72rem }
 .tour-flow span { padding: 8px 4px; border-radius: 8px; background: var(--field); color: var(--t1); font-weight: 500; line-height: 1.25 }
 .tour-flow span small { display: block; font-weight: 400; color: var(--t3); font-size: 0.66rem }
-@media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card, .tour-dim { transition: none; animation: none } }
+@media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card, .tour-dim { transition: none !important; animation: none } }
 
 /* =====================  DARK THEME  ===================== */
 html[data-theme="dark"] {
@@ -302,3 +307,32 @@ html[data-theme="dark"] .tile { box-shadow: inset 0 0 0 1px var(--line), 0 1px 0
   .tile, .tile.lift:hover { transition: none; transform: none }
   ::view-transition-old(root), ::view-transition-new(root) { animation: none }
 }
+
+/* staking window */
+.sw { background: linear-gradient(180deg, var(--blue-soft), var(--white) 55%) }
+html[data-theme="dark"] .sw { background: linear-gradient(180deg, #14234a, var(--white) 60%) }
+.sw-count { font-size: clamp(1.7rem, 3.4vw, 2.3rem); font-weight: 600; letter-spacing: -0.04em; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--blue) }
+.sw-line { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 6px }
+.sw-line .sws { display: grid; gap: 4px; min-width: 0 }
+.sw-line .bar { height: 8px; border-radius: 99px; background: var(--line-2); overflow: hidden; position: relative }
+.sw-line .closed .bar b { position: absolute; inset: 0 auto 0 0; background: var(--t3); border-radius: 99px }
+.sw-line .earn .bar { background: linear-gradient(90deg, var(--blue), var(--blue-l)); box-shadow: 0 0 0 3px var(--blue-soft) }
+.sw-line .claim .bar { background: repeating-linear-gradient(135deg, var(--blue-l) 0 6px, transparent 6px 11px); opacity: 0.7 }
+.sw-line .t { font-size: 0.78rem; font-weight: 500; color: var(--t1) }
+.sw-line .closed .t { color: var(--t3) }
+.sw-line .earn .t { color: var(--blue) }
+.sw-line .d { font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 0.66rem; color: var(--t3) }
+.sw-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px }
+.sw-stats > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--white); box-shadow: inset 0 0 0 1px var(--line) }
+.sw-stats span { font-size: 0.72rem; color: var(--t3) }
+.sw-stats b { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums }
+.sw-stats small { font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 0.64rem; color: var(--t3) }
+@media (max-width: 640px) { .sw-stats { grid-template-columns: repeat(2, 1fr) } .sw-line { grid-template-columns: 1fr; } }
+.perks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px }
+.perks li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; font-size: 0.82rem; color: var(--t2); line-height: 1.45 }
+.perks li svg { width: 30px; height: 30px; padding: 7px; border-radius: 9px; background: var(--blue-soft); color: var(--blue) }
+.perks b { display: block; color: var(--t1); font-weight: 500 }
+.proj { display: grid; gap: 6px; padding: 12px 14px; border-radius: 12px; background: var(--black); color: #fff }
+html[data-theme="dark"] .proj { background: #161a22; box-shadow: inset 0 0 0 1px var(--line-2) }
+.proj .row span:first-child { color: rgba(255, 255, 255, 0.6) }
+.proj .big { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums }

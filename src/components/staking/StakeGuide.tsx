@@ -14,7 +14,7 @@ export type GuideState =
   | { kind: "graceOver"; amount: string }
   | { kind: "earning"; amount: string; cycle: string; share: string; lastCycle: string }
   | { kind: "queued"; amount: string; cycle: string; start: string }
-  | { kind: "idle"; nextCycle: string; nextStart: string };
+  | { kind: "idle"; nextCycle: string; nextStart: string; closesIn: string; running: string };
 
 /** One clear "what should I do now" banner, based on the connected wallet's position. */
 export function GuideBanner({ state, symbol, go }: { state: GuideState; symbol: string; go: (t: GuideTab) => void }) {
@@ -91,8 +91,8 @@ export function GuideBanner({ state, symbol, go }: { state: GuideState; symbol: 
     );
   }
   return (
-    <Banner tone="white" eyebrow={`Next cycle · ${state.nextCycle}`} title={`Stake now for ${state.nextCycle} rewards`}
-      body={`Stakes made now join the next cycle, earning from ${state.nextStart}. Rewards are shared by stake size.`}>
+    <Banner tone="white" eyebrow={`Staking open · closes in ${state.closesIn}`} title={`Stake now for ${state.nextCycle} rewards`}
+      body={`${state.running} is already running and closed to new stakes. Stake before it ends to earn a full share of ${state.nextCycle}, starting ${state.nextStart}.`}>
       <button className="btn btn-b btn-sm" onClick={() => go("stake")}>
         Stake for {state.nextCycle} <ArrowRight />
       </button>

@@ -1,6 +1,8 @@
 "use client";
 
+import { parseEther } from "viem";
 import { cycleAt, cyclesAround, fmtDate, CLAIM_BUFFER_DAYS } from "@/lib/cycles";
+import { formatToken } from "@/lib/format";
 
 type StakePanelProps = {
   amount: string;
@@ -15,6 +17,11 @@ type StakePanelProps = {
   disabledReason: string | null;
   busy: boolean;
   symbol: string;
+  /** principal already joining next month */
+  nextJoinTotal: bigint;
+  /** reference reward pool used for the illustration (this month so far) */
+  refPool: bigint;
+  refLabel: string;
 };
 
 const PERIOD_OPTIONS = [1, 2, 3, 6, 12];
@@ -33,7 +40,19 @@ export function StakePanel({
   disabledReason,
   busy,
   symbol,
+  nextJoinTotal,
+  refPool,
+  refLabel,
 }: StakePanelProps) {
+  let amt = 0n;
+  try {
+    amt = parseEther(amount || "0");
+  } catch {
+    amt = 0n;
+  }
+  const pool = nextJoinTotal + amt;
+  const sharePct = pool > 0n && amt > 0n ? Number((amt * 1_000_000n) / pool) / 10_000 : 0;
+  const est = pool > 0n ? (refPool * amt) / pool : 0n;
   const { next } = cyclesAround(Math.floor(Date.now() / 1000));
   const [ny, nm] = next.key.split("-").map(Number);
   const last = cycleAt(ny, nm - 1 + periods - 1);
@@ -98,6 +117,24 @@ export function StakePanel({
           <span>Withdraw with rewards by</span>
           <span className="font-medium">{fmtDate(graceEnd)}</span>
         </div>
+      </div>
+
+      <div className="proj">
+        <div className="row">
+          <span>Your share of {next.label.split(" ")[0]} (so far)</span>
+          <span className="big">{amt > 0n ? `${sharePct.toLocaleString(undefined, { maximumFractionDigits: 2 })}%` : "—"}</span>
+        </div>
+        <div className="row">
+          <span>If the pool matches {refLabel} ({formatToken(refPool, 2)})</span>
+          <span className="font-medium">≈ {formatToken(est, 2)} {symbol} / month</span>
+        </div>
+        <div className="row">
+          <span>Already joining {next.label.split(" ")[0]}</span>
+          <span className="mono text-[0.8rem]">{formatToken(nextJoinTotal, 2)} {symbol}</span>
+        </div>
+        <p className="!text-[0.72rem] !text-white/50">
+          Illustration only — your share changes as others join, and the pool depends on real network fees. No APR.
+        </p>
       </div>
 
       <label className="check">

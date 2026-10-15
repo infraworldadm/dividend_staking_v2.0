@@ -11,6 +11,7 @@ import { HowItWorksCard } from "@/components/staking/HowItWorksCard";
 import { CycleTimeline } from "@/components/staking/CycleTimeline";
 import { Tour, type TourStep } from "@/components/staking/Tour";
 import { Num } from "@/components/motion/Num";
+import { StakeWindow, WhyStake } from "@/components/staking/StakeWindow";
 import { CLAIM_BUFFER_DAYS, cycleOfEpoch, cyclesAround, fmtDate } from "@/lib/cycles";
 import {
   EmptyPanel,
@@ -184,7 +185,13 @@ export function StakingPage() {
               ? { kind: "earning", amount: staked, cycle: curCycle.label, share, lastCycle: cycleOfEpoch(lastEarning).label }
               : queued
                 ? { kind: "queued", amount: staked, cycle: cycleOfEpoch(activeFrom).label, start: fmtDate(cycleOfEpoch(activeFrom).start) }
-                : { kind: "idle", nextCycle: nextCycle.label, nextStart: fmtDate(nextCycle.start) };
+                : {
+                    kind: "idle",
+                    nextCycle: nextCycle.label,
+                    nextStart: fmtDate(nextCycle.start),
+                    closesIn: formatCountdown(Math.max(0, nextCycle.start - nowSec)),
+                    running: curCycle.label,
+                  };
 
   // Default tab follows the wallet's state until the user picks one.
   const autoTab: GuideTab = canClaim && !lockEnded ? "claim" : hasStake ? "earning" : "stake";
@@ -277,10 +284,13 @@ export function StakingPage() {
       body: (
         <>
           <p>
-            Enter an amount and pick a <b>lock of 1–12 months</b>. Your stake joins the next cycle on{" "}
-            <b>{fmtDate(nextCycle.start)}</b> and earns in <b>each locked month</b>.
+            <b>{curCycle.label} is already running</b>, so it’s closed to new stakes. The window for{" "}
+            <b>{nextCycle.label}</b> is open until <b>{fmtDate(nextCycle.start - 1)}, 23:59 UTC</b>.
           </p>
-          <p>When the lock ends, earning stops. One stake per wallet.</p>
+          <p>
+            Enter an amount and pick a <b>lock of 1–12 months</b>. You’ll see who’s already joining, your projected share,
+            and exactly which months you earn in.
+          </p>
         </>
       ),
     },
@@ -325,7 +335,7 @@ export function StakingPage() {
       ),
     },
     {
-      target: '[data-tour="cycles"]',
+      target: '[data-tour="cycle-cards"]',
       title: "Cycle calendar",
       body: (
         <p>
@@ -354,7 +364,8 @@ export function StakingPage() {
         <section className="mb-3 grid gap-4 lg:grid-cols-[1.3fr_1fr] lg:items-end">
           <div className="grid gap-3">
             <span className="pill justify-self-start" data-rv>
-              <span className="pd">{s.configured ? "Live" : "Soon"}</span> Dividend pool on {appChain.name}
+              <span className="pd">{s.configured ? "Open" : "Soon"}</span> Staking for {nextCycle.label} · closes in{" "}
+              {formatCountdown(Math.max(0, nextCycle.start - nowSec))}
             </span>
             <h1 className="text-[clamp(1.8rem,3.6vw,2.6rem)]">
               <span className="hl-line"><span>Stake reAED.</span></span>
@@ -472,6 +483,16 @@ export function StakingPage() {
               ) : null}
 
               {activeTab === "stake" ? (
+                <StakeWindow
+                  now={nowSec}
+                  joining={formatToken(s.nextJoinTotal, 2)}
+                  earningNow={formatToken(s.currentActiveTotal, 2)}
+                  poolNow={formatToken(poolNow, 2)}
+                  lastPool={formatToken(s.lastMonthPool, 2)}
+                  symbol={SYMBOL}
+                />
+              ) : null}
+              {activeTab === "stake" ? (
                 hasStake ? (
                   <EmptyPanel
                     label={`Stake for ${nextCycle.label}`}
@@ -494,6 +515,9 @@ export function StakingPage() {
                     disabledReason={stakeDisabledReason || contractError}
                     busy={busy}
                     symbol={SYMBOL}
+                    nextJoinTotal={s.nextJoinTotal}
+                    refPool={poolNow}
+                    refLabel={`${curCycle.label.split(" ")[0]} so far`}
                   />
                 )
               ) : null}
@@ -519,6 +543,7 @@ export function StakingPage() {
                 <span>New here?</span><span className="font-medium text-[var(--blue)]">Stake for {nextCycle.label} →</span>
               </button>
             </div>
+            <WhyStake />
             <HowItWorksCard />
           </div>
         </section>

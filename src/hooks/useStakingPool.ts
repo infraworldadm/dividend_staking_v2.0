@@ -5,6 +5,7 @@ import { parseEther } from "viem";
 import { useAccount, useBalance, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { isStakingConfigured, stakingPoolAbi, stakingPoolAddress } from "@/lib/web3/contract";
 import type { EpochChain, PoolState, StakeUser } from "@/types/contract";
+import { cyclesAround, epochIdOf } from "@/lib/cycles";
 
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
 const big = (v: unknown) => (typeof v === "bigint" ? v : 0n);
@@ -14,6 +15,10 @@ export function useStakingPool() {
   const { address, isConnected } = useAccount();
   const who = address ?? ZERO;
   const base = { abi: stakingPoolAbi, address: stakingPoolAddress! } as const;
+  const around = cyclesAround(Math.floor(Date.now() / 1000));
+  const nextId = BigInt(epochIdOf(around.next));
+  const prevId = BigInt(epochIdOf(around.previous));
+  const nextSeconds = BigInt(around.next.end - around.next.start);
 
   const { data, isLoading, refetch } = useReadContracts({
     contracts: [
@@ -25,6 +30,8 @@ export function useStakingPool() {
       { ...base, functionName: "pendingRewards", args: [who] },
       { ...base, functionName: "currentEpochShare", args: [who] },
       { ...base, functionName: "graceEnd", args: [who] },
+      { ...base, functionName: "totalWeight", args: [nextId] },
+      { ...base, functionName: "epochReward", args: [prevId] },
     ],
     query: { enabled: isStakingConfigured, refetchInterval: 10_000 },
   });
@@ -75,6 +82,11 @@ export function useStakingPool() {
     currentTotalWeight: share[2],
     currentRewardSoFar: share[3],
     graceEnd: big(data?.[7]?.result),
+    /** principal already scheduled to earn next month */
+    nextJoinTotal: big(data?.[8]?.result) / nextSeconds,
+    /** principal earning in the running month */
+    currentActiveTotal: share[2] / BigInt(around.current.end - around.current.start),
+    lastMonthPool: big(data?.[9]?.result),
     dividendPoolBalance: dividendBal?.value ?? 0n,
     refetch: () => {
       refetch();

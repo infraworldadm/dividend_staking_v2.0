@@ -35,7 +35,7 @@ export function CycleTimeline({ poolNow, symbol }: { poolNow: string; symbol: st
 
   return (
     <section className="mt-3 grid gap-3" data-tour="cycles">
-      <div className="grid gap-3 md:grid-cols-3" data-rv-kids>
+      <div className="grid gap-3 md:grid-cols-3" data-rv-kids data-tour="cycle-cards">
         <div className="tile">
           <div className="flex items-center justify-between">
             <span className="lbl">Previous · {previous.label}</span>
