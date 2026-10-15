@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --app-bg: #f2f4f7;
+  --card-bg: #ffffff;
+  --border-soft: #dfe6ef;
+  --text-muted: #7b8697;
+  --brand: #1a6dff;
+  --brand-dark: #0d4fca;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
+  background: linear-gradient(180deg, #f6f8fb 0%, #eef2f8 100%);
+  color: #0f172a;
+}
+
+button {
+  font: inherit;
+}
+
+input,
+select {
+  font: inherit;
+}
