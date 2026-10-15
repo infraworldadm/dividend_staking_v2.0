@@ -363,3 +363,55 @@ html[data-theme="dark"] .claimplan { background: rgba(245, 158, 11, 0.08); box-s
 html[data-theme="dark"] .claimplan li { border-color: rgba(245, 158, 11, 0.2) }
 html[data-theme="dark"] .claimplan li .mono { color: #fbbf24 }
 .claimnote { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.76rem; color: var(--t2) }
+
+/* ── Pool hero: big live dividend-pool balance ── */
+@property --ph-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.poolhero {
+  position: relative; border-radius: 22px; padding: 1.5px; isolation: isolate;
+  background: conic-gradient(from var(--ph-a), #1f5bff, #7aa2ff, #00d1ff, #1f5bff 40%, rgba(31,91,255,.15) 60%, #1f5bff);
+  animation: phSpin 6s linear infinite, phGlow 3.2s ease-in-out infinite;
+  box-shadow: 0 18px 60px -18px rgba(31, 91, 255, .55);
+}
+.poolhero .ph-in {
+  position: relative; overflow: hidden; display: grid; gap: 12px; border-radius: 21px; padding: 20px;
+  background: radial-gradient(120% 90% at 100% 0%, rgba(31,91,255,.38), transparent 55%),
+              radial-gradient(90% 70% at 0% 100%, rgba(0,209,255,.16), transparent 60%), #07090f;
+  color: #fff;
+}
+.poolhero .ph-in::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.07) 50%, transparent 65%);
+  transform: translateX(-100%); animation: shine 5.5s ease-in-out infinite;
+}
+.ph-amt {
+  position: relative; display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px;
+  font-size: clamp(2.5rem, 7vw, 3.8rem); font-weight: 650; line-height: 1; letter-spacing: -0.045em;
+  background: linear-gradient(180deg, #fff 30%, #9fbaff); -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 40px rgba(31,91,255,.25);
+}
+.ph-sym { font-family: var(--font-geist-mono, monospace); font-size: 1rem; font-weight: 400; letter-spacing: 0; color: rgba(255,255,255,.55); -webkit-text-fill-color: rgba(255,255,255,.55); }
+.ph-delta {
+  position: absolute; right: 0; top: -6px; font-size: .9rem; font-weight: 600; letter-spacing: 0;
+  color: #4ade80; -webkit-text-fill-color: #4ade80; background: rgba(74,222,128,.12); padding: 3px 8px; border-radius: 999px;
+  animation: phDelta 2.6s ease-out forwards;
+}
+.ph-sub { font-size: .84rem; color: rgba(255,255,255,.65); max-width: 46ch; }
+.ph-sub b { color: #fff; font-weight: 500; }
+.ph-bar { height: 3px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+.ph-bar i { display: block; height: 100%; width: 40%; border-radius: inherit; background: linear-gradient(90deg, transparent, #1f5bff, #00d1ff, transparent); animation: phFlow 2.4s ease-in-out infinite; }
+.ph-mini { display: grid; gap: 3px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(255,255,255,.07); }
+.ph-mini span { color: rgba(255,255,255,.5); font-size: .72rem; }
+.ph-mini b { font-weight: 500; }
+.ph-cta {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; border-radius: 12px;
+  background: #1f5bff; color: #fff; font-weight: 600; font-size: .9rem; transition: transform .2s, box-shadow .2s;
+  box-shadow: 0 8px 24px -8px rgba(31,91,255,.9);
+}
+.ph-cta:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -8px rgba(31,91,255,1); }
+.ph-cta svg { transition: transform .2s; }
+.ph-cta:hover svg { transform: translateX(3px); }
+@keyframes phSpin { to { --ph-a: 360deg; } }
+@keyframes phGlow { 50% { box-shadow: 0 22px 80px -14px rgba(31,91,255,.85); } }
+@keyframes phFlow { from { transform: translateX(-100%) } to { transform: translateX(250%) } }
+@keyframes phDelta { 0% { opacity: 0; transform: translateY(8px) scale(.9) } 15% { opacity: 1; transform: none } 80% { opacity: 1 } 100% { opacity: 0; transform: translateY(-10px) } }
+@media (prefers-reduced-motion: reduce) { .poolhero, .poolhero .ph-in::after, .ph-bar i { animation: none } }

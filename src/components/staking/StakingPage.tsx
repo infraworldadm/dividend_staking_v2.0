@@ -11,6 +11,7 @@ import { HowItWorksCard } from "@/components/staking/HowItWorksCard";
 import { CycleTimeline } from "@/components/staking/CycleTimeline";
 import { Tour, type TourStep } from "@/components/staking/Tour";
 import { Num } from "@/components/motion/Num";
+import { PoolHero } from "@/components/staking/PoolHero";
 import { StakeWindow, WhyStake } from "@/components/staking/StakeWindow";
 import { ActivityList } from "@/components/staking/ActivityList";
 import { useActivity } from "@/hooks/useActivity";
@@ -145,8 +146,9 @@ export function StakingPage() {
   const firstQueued = s.positions.find((_, i) => views[i].status === "queued");
 
   const share = pct(s.currentWeight, s.currentTotalWeight);
-  // Estimate: share × (rewards already received this month + what the dividend pool holds now)
-  const poolNow = s.currentRewardSoFar + s.dividendPoolBalance;
+  // This month's pool so far. The contract's figure already includes the dividend-pool balance
+  // (auto-pulled at month end); before the contract is live, show the dividend pool itself.
+  const poolNow = s.configured ? s.currentRewardSoFar : s.dividendPoolBalance;
   const estimate =
     s.currentTotalWeight > 0n ? formatToken((poolNow * s.currentWeight) / s.currentTotalWeight, 2) : "0.00";
 
@@ -432,27 +434,15 @@ export function StakingPage() {
             </button>
           </div>
 
-          <div className="tile dark" data-tour="pool" data-rv style={{ ["--d" as string]: "150ms" }}>
-            <div className="flex items-center justify-between">
-              <span className="live">
-                <i /> {curCycle.label} reward pool
-              </span>
-              <span className="mono text-[0.7rem] text-white/40">Live · 10s</span>
-            </div>
-            <div className="text-[clamp(1.6rem,3vw,2.1rem)] font-semibold leading-none tracking-[-0.04em]">
-              <Num value={formatToken(poolNow, 2)} />
-              <span className="mono ml-2 text-[0.9rem] font-normal tracking-normal text-white/50">{SYMBOL}</span>
-            </div>
-            <div className="hr" />
-            <div className="row">
-              <span className="!text-white/60">In dividend pool (paid at month end)</span>
-              <span className="mono text-[0.85rem]">{formatToken(s.dividendPoolBalance, 2)}</span>
-            </div>
-            <div className="row">
-              <span className="!text-white/60">Already in staking pool</span>
-              <span className="mono text-[0.85rem]">{formatToken(s.currentRewardSoFar, 2)}</span>
-            </div>
-          </div>
+          <PoolHero
+            amount={poolNow}
+            dividend={s.dividendPoolBalance}
+            month={curCycle.label}
+            nextMonth={nextCycle.label}
+            payDate={fmtDate(curCycle.end)}
+            symbol={SYMBOL}
+            onStake={() => goTab("stake")}
+          />
         </section>
 
         <div data-tour="stats">

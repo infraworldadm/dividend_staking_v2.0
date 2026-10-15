@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { parseEther } from "viem";
 import { useAccount, useBalance, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { isStakingConfigured, stakingPoolAbi, stakingPoolAddress } from "@/lib/web3/contract";
+import { isStakingConfigured, stakingPoolAbi, stakingPoolAddress, dividendPoolFallback } from "@/lib/web3/contract";
 import type { EpochChain, PoolState, StakeAccount, StakePosition } from "@/types/contract";
 import { cyclesAround, epochIdOf } from "@/lib/cycles";
 
@@ -80,8 +80,8 @@ export function useStakingPool() {
 
   // Live balance of the dividend pool = rewards waiting to be sent at month end.
   const { data: dividendBal, refetch: refetchDiv } = useBalance({
-    address: pool.dividendPool,
-    query: { enabled: Boolean(pool.dividendPool), refetchInterval: 10_000 },
+    address: pool.dividendPool ?? dividendPoolFallback,
+    query: { refetchInterval: 10_000 },
   });
 
   return {
