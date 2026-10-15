@@ -8,6 +8,8 @@ import { StatsCards, getDefaultIcons } from "@/components/staking/StatsCards";
 import { StakePanel } from "@/components/staking/StakePanel";
 import { RewardsPanel } from "@/components/staking/RewardsPanel";
 import { HowItWorksCard } from "@/components/staking/HowItWorksCard";
+import { CycleTimeline } from "@/components/staking/CycleTimeline";
+import { cyclesAround } from "@/lib/cycles";
 import { SuccessOverlay, type SuccessKind, type SuccessState } from "@/components/staking/SuccessOverlay";
 import { useDividendPoolReads } from "@/hooks/useDividendPoolReads";
 import { useDividendPoolWrites } from "@/hooks/useDividendPoolWrites";
@@ -15,12 +17,6 @@ import { formatCountdown, formatToken } from "@/lib/format";
 import { useCountdown } from "@/hooks/useCountdown";
 import { appChain } from "@/lib/web3/chains";
 import { dividendPoolAddress } from "@/lib/web3/contract";
-
-function getThirtyDayCycleLeftSeconds(now: number) {
-  const cycle = 30 * 24 * 60 * 60;
-  const elapsed = now % cycle;
-  return cycle - elapsed;
-}
 
 function mapError(msg: string | null) {
   if (!msg) return null;
@@ -50,7 +46,7 @@ export function StakingPage() {
 
   useEffect(() => {
     const now = Math.floor(Date.now() / 1000);
-    setResetTarget(now + getThirtyDayCycleLeftSeconds(now));
+    setResetTarget(cyclesAround(now).current.end);
   }, []);
 
   const resetInSeconds = useCountdown(resetTarget);
@@ -145,9 +141,9 @@ export function StakingPage() {
       icon: icons.yours,
     },
     {
-      label: "Cycle resets in",
+      label: "Cycle ends in",
       value: formatCountdown(resetInSeconds),
-      sub: "30-day cycle",
+      sub: "Monthly cycle · UTC",
       icon: icons.reset,
     },
   ];
@@ -170,7 +166,7 @@ export function StakingPage() {
             </h1>
             <p className="max-w-[480px] text-[0.92rem] text-[var(--t2)]">
               No inflation. No emissions. Rewards are paid from real INFRA network fees, shared by weight across
-              30-day cycles.
+              monthly cycles.
             </p>
           </div>
 
@@ -268,6 +264,8 @@ export function StakingPage() {
             <HowItWorksCard />
           </div>
         </section>
+
+        <CycleTimeline />
 
         <SuccessOverlay state={success} explorer={explorer} onClose={closeSuccess} />
 

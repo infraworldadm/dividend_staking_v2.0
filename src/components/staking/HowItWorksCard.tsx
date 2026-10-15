@@ -7,22 +7,22 @@ export function HowItWorksCard() {
       <ol className="steps">
         <li>
           <span>
-            <b>Stake reAED</b>Lock for one or more 30-day periods.
+            <b>Stake reAED</b>Your stake joins next month&apos;s cycle.
           </span>
         </li>
         <li>
           <span>
-            <b>Accumulate weight</b>Weight grows with amount × time staked.
+            <b>Earn through the month</b>Weight grows with amount × time staked.
           </span>
         </li>
         <li>
           <span>
-            <b>Earn network revenue</b>Rewards come from real fees, not emissions.
+            <b>Cycle closes at month end</b>Rewards come from real network fees.
           </span>
         </li>
         <li>
           <span>
-            <b>Claim each cycle</b>Unclaimed rewards expire after the claim window.
+            <b>Claim within 30 days</b>Unclaimed rewards expire after the window.
           </span>
         </li>
       </ol>

@@ -156,3 +156,18 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.035em; line-height: 1.02; text
   .succ, .succ-card, .succ-amt, .succ-burst i { animation: none }
   .succ-ring, .succ-mark { animation: none; stroke-dashoffset: 0 }
 }
+
+/* cycle status chips + history table */
+.st { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 0.64rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 99px }
+.st::before { content: ""; width: 5px; height: 5px; border-radius: 50% ; background: currentColor }
+.st-active { background: var(--blue-soft); color: var(--blue) }
+.tile.dark .st-active { background: rgba(31, 91, 255, 0.2); color: var(--blue-l) }
+.st-claim { background: #fff4e5; color: #b45309 }
+.st-next { background: var(--field); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line-2) }
+.st-closed { background: var(--field); color: var(--t3) }
+.cyc { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 0.82rem; margin-top: 8px }
+.cyc th { text-align: left; font-family: var(--font-geist-mono), ui-monospace, monospace; font-weight: 400; font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--t3); padding: 8px 18px; border-bottom: 1px solid var(--line) }
+.cyc td { padding: 10px 18px; border-bottom: 1px solid var(--line); color: var(--t2) }
+.cyc td.font-medium { color: var(--t1) }
+.cyc tr:last-child td { border-bottom: 0 }
+.cyc tr.on td { background: rgba(31, 91, 255, 0.04) }

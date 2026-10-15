@@ -1,5 +1,7 @@
 "use client";
 
+import { cyclesAround, fmtDate } from "@/lib/cycles";
+
 type StakePanelProps = {
   mode: "stake" | "withdraw";
   setMode: (mode: "stake" | "withdraw") => void;
@@ -53,6 +55,7 @@ export function StakePanel({
     month: "short",
     year: "numeric",
   });
+  const nextCycle = cyclesAround(Math.floor(Date.now() / 1000)).next;
   const reason = inStakeMode ? stakeDisabledReason : withdrawDisabledReason;
 
   return (
@@ -111,8 +114,10 @@ export function StakePanel({
 
           <div className="grid gap-1.5 rounded-xl bg-[var(--field)] px-3.5 py-3">
             <div className="row">
-              <span>Periods</span>
-              <span className="font-medium">{periods}</span>
+              <span>Joins cycle</span>
+              <span className="font-medium">
+                {nextCycle.label} · from {fmtDate(nextCycle.start)}
+              </span>
             </div>
             <div className="row">
               <span>Unlocks on</span>
