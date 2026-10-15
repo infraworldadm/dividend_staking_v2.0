@@ -72,3 +72,10 @@ export const fmtDate = (s: number) =>
 
 /** Last moment inside a cycle, for display ("ends 31 Oct"). */
 export const fmtEnd = (s: number) => fmtDate(s - 1);
+
+/** Contract epoch id (year*12 + month0) ↔ Cycle. */
+export const epochIdOf = (c: Cycle) => {
+  const [y, m] = c.key.split("-").map(Number);
+  return y * 12 + (m - 1);
+};
+export const cycleOfEpoch = (id: number) => cycleAt(Math.floor(id / 12), id % 12);

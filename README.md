@@ -31,7 +31,8 @@ cp .env.example .env.local
 - `NEXT_PUBLIC_EXPLORER_URL`
 - `NEXT_PUBLIC_NATIVE_NAME`
 - `NEXT_PUBLIC_NATIVE_SYMBOL`
-- `NEXT_PUBLIC_DIVIDEND_POOL_ADDRESS`
+- `NEXT_PUBLIC_STAKING_POOL_ADDRESS` (InfraStakingPool proxy; dividend pool is read from the contract)
+- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
 
 Default `.env.example` is prefilled for INFRA (`chainId: 15324`, native token: `ReAED`).
 
@@ -41,16 +42,9 @@ Default `.env.example` is prefilled for INFRA (`chainId: 15324`, native token: `
 npm run dev
 ```
 
-## Contract actions wired
+## Contract actions wired (InfraStakingPool — see `contracts/README.md`)
 
-- `stake(uint256 periods)` with native value
-- `claim()`
-- `withdraw()`
-- Reads from `users(address)`, `totalStaked`, `totalLocked`, `rewardVaultBalance`
-- 
-
-## Notes
-
-- UI follows the screenshot style while mapping to deployed contract behavior.
-- Unstake input is removed from contract logic (withdraw is full principal withdrawal).
-- Reward expiry countdown is shown from `rewardExpiryAt`..
+- `stake(uint256 months)` with native value · `claim()` · `withdraw()`
+- Reads: `users`, `pendingRewards`, `currentEpochShare`, `graceEnd`, `totalStaked`, `currentEpoch`, `dividendPool`, `epochInfo`, `userEpochReward`
+- Live dividend pool balance shown as this month's upcoming reward pool
+- ABI: `src/lib/web3/stakingAbi.ts` (generated from `contracts/out`)

@@ -1,22 +1,20 @@
-export type UserInfo = {
+/** InfraStakingPool.users(address) */
+export type StakeUser = {
   amount: bigint;
-  startDate: bigint;
-  countOfPeriods: bigint;
-  endDate: bigint;
-  weight: bigint;
-  lastUpdate: bigint;
-  rewardDebt: bigint;
-  pendingClaimable: bigint;
+  stakedAt: bigint;
+  periods: bigint;
+  activeFrom: bigint;
+  lockEnd: bigint;
+  lastSettledEpoch: bigint;
   totalClaimed: bigint;
-  rewardExpiryAt: bigint;
-  expiredRewardsTotal: bigint;
+  totalExpired: bigint;
 };
 
-export type PoolInfo = {
+export type PoolState = {
   totalStaked: bigint;
-  totalLocked: bigint;
-  totalWeight: bigint;
-  lastGlobalUpdate: bigint;
-  rewardVaultBalance: bigint;
-  rewardExpiryWindow: bigint;
+  currentEpoch: bigint;
+  dividendPool?: `0x${string}`;
+  totalRewardsClaimed: bigint;
 };
+
+export type EpochChain = { reward: bigint; claimed: bigint; swept: boolean; mine: bigint };

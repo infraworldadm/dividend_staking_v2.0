@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CLAIM_BUFFER_DAYS, cycleHistory, cyclesAround, fmtDate, fmtEnd, statusOf, type CycleStatus } from "@/lib/cycles";
-import { formatCountdown } from "@/lib/format";
+import { CLAIM_BUFFER_DAYS, cycleHistory, cyclesAround, epochIdOf, fmtDate, fmtEnd, statusOf, type CycleStatus } from "@/lib/cycles";
+import { formatCountdown, formatToken } from "@/lib/format";
+import { useEpochHistory } from "@/hooks/useStakingPool";
 
 const STATUS: Record<CycleStatus, { text: string; cls: string }> = {
   upcoming: { text: "Next", cls: "st-next" },
@@ -23,12 +24,14 @@ function useNow() {
 }
 
 /** Monthly cycle overview: previous claim window, current earning month, next cycle, and history. */
-export function CycleTimeline() {
+export function CycleTimeline({ poolNow, symbol }: { poolNow: string; symbol: string }) {
   const now = useNow();
+  const history = now ? cycleHistory(now) : [];
+  const ids = history.map(epochIdOf);
+  const chain = useEpochHistory(ids);
   if (!now) return null;
   const { previous, current, next } = cyclesAround(now);
   const progress = Math.min(1, (now - current.start) / (current.end - current.start));
-  const history = cycleHistory(now);
 
   return (
     <section className="mt-3 grid gap-3" data-tour="cycles">
@@ -58,7 +61,8 @@ export function CycleTimeline() {
             <div className="bar-fill grow h-full rounded-full bg-[var(--blue)]" style={{ width: `${progress * 100}%` }} />
           </div>
           <p className="text-[0.8rem]">
-            {fmtDate(current.start)} → {fmtEnd(current.end)} · claimable until {fmtDate(current.claimUntil)}
+            Reward pool so far: <b className="font-medium text-white">{poolNow} {symbol}</b> · claimable until{" "}
+            {fmtDate(current.claimUntil)}
           </p>
         </div>
 
@@ -82,7 +86,7 @@ export function CycleTimeline() {
             <i /> Cycle history
           </span>
           <span className="mono text-[0.7rem] text-[var(--t3)]">
-            Monthly cycles · {CLAIM_BUFFER_DAYS}-day claim window · UTC
+            Monthly cycles · {CLAIM_BUFFER_DAYS}-day claim window · unclaimed → admin · UTC
           </span>
         </div>
         <div className="overflow-x-auto">
@@ -93,18 +97,23 @@ export function CycleTimeline() {
                 <th>Started</th>
                 <th>Ended</th>
                 <th>Claim until</th>
+                <th>Reward pool</th>
+                <th>Your reward</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {history.map((c) => {
                 const s = statusOf(c, now);
+                const d = chain[epochIdOf(c)];
                 return (
                   <tr key={c.key} className={s === "active" ? "on" : undefined}>
                     <td className="font-medium">{c.label}</td>
                     <td>{fmtDate(c.start)}</td>
                     <td>{fmtEnd(c.end)}</td>
                     <td>{fmtDate(c.claimUntil)}</td>
+                    <td className="mono">{d ? formatToken(d.reward, 2) : "—"}</td>
+                    <td className="mono">{d && d.mine > 0n ? formatToken(d.mine, 2) : "—"}</td>
                     <td>
                       <span className={`st ${STATUS[s].cls}`}>{STATUS[s].text}</span>
                     </td>

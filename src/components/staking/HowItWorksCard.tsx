@@ -7,22 +7,22 @@ export function HowItWorksCard() {
       <ol className="steps">
         <li>
           <span>
-            <b>Stake reAED</b>Your stake joins next month&apos;s cycle.
+            <b>Stake reAED for 1–12 months</b>Your stake joins next month&apos;s cycle.
           </span>
         </li>
         <li>
           <span>
-            <b>Earn through the month</b>Weight grows with amount × time staked.
+            <b>Earn each locked month</b>Your share = your stake ÷ everyone’s stake that month.
           </span>
         </li>
         <li>
           <span>
-            <b>Cycle closes at month end</b>Rewards come from real network fees.
+            <b>Dividend pool pays at month end</b>Network fees collected that month are split by share.
           </span>
         </li>
         <li>
           <span>
-            <b>Claim within 30 days</b>Unclaimed rewards expire after the window.
+            <b>Claim within 30 days</b>After the lock, withdraw within 30 days to get rewards too — later, principal only.
           </span>
         </li>
       </ol>
