@@ -56,7 +56,7 @@ export function StakePanel({
   const reason = inStakeMode ? stakeDisabledReason : withdrawDisabledReason;
 
   return (
-    <div className="tile !gap-5">
+    <div className="tile !gap-3.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="lbl b">
           <i /> INFRA Real Yield
@@ -89,7 +89,7 @@ export function StakePanel({
                 placeholder="0.00"
               />
               <span className="mono text-[0.8rem] text-[var(--t3)]">{symbol}</span>
-              <button onClick={() => setAmount(walletBalanceRaw)} className="btn btn-k !h-8 !rounded-lg !px-3 !text-[0.75rem]">
+              <button onClick={() => setAmount(walletBalanceRaw)} className="btn btn-k !h-7 !rounded-lg !px-3 !text-[0.75rem]">
                 Max
               </button>
             </div>
@@ -109,7 +109,7 @@ export function StakePanel({
             </div>
           </div>
 
-          <div className="grid gap-3 rounded-xl bg-[var(--field)] p-4">
+          <div className="grid gap-1.5 rounded-xl bg-[var(--field)] px-3.5 py-3">
             <div className="row">
               <span>Periods</span>
               <span className="font-medium">{periods}</span>
@@ -129,12 +129,12 @@ export function StakePanel({
           <div className="grid min-w-0 gap-2">
             <span className="text-[0.85rem] text-[var(--t2)]">Staked principal</span>
             <div className="field">
-              <span className="flex-1 text-[clamp(1.6rem,3vw,2rem)] font-semibold tracking-[-0.03em]">{stakedAmount}</span>
+              <span className="flex-1 text-[1.4rem] font-semibold tracking-[-0.03em]">{stakedAmount}</span>
               <span className="mono text-[0.8rem] text-[var(--t3)]">{symbol}</span>
             </div>
             <span className="text-[0.78rem] text-[var(--t3)]">Withdraw returns your full principal after the lock ends.</span>
           </div>
-          <div className="grid gap-3 rounded-xl bg-[var(--field)] p-4">
+          <div className="grid gap-1.5 rounded-xl bg-[var(--field)] px-3.5 py-3">
             <div className="row">
               <span>{weightMetricLabel}</span>
               <span className="font-medium text-[#c2410c]">{weightMetricValue}</span>

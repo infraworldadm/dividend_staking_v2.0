@@ -27,10 +27,10 @@ export function RewardsPanel({
         <i /> Pending rewards
       </span>
       <div>
-        <div className="text-[clamp(2.4rem,5vw,3.4rem)] font-semibold leading-none tracking-[-0.04em]">
+        <div className="text-[clamp(1.8rem,3.4vw,2.3rem)] font-semibold leading-none tracking-[-0.04em]">
           {pendingRewards}
         </div>
-        <div className="mono mt-2 text-[0.75rem] text-white/70">{symbol}</div>
+        <div className="mono mt-1 text-[0.75rem] text-white/70">{symbol}</div>
       </div>
       <div className="hr" />
       <div className="row">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBalance } from "wagmi";
 import { formatEther, parseEther } from "viem";
 import { Header } from "@/components/staking/Header";
@@ -8,6 +8,7 @@ import { StatsCards, getDefaultIcons } from "@/components/staking/StatsCards";
 import { StakePanel } from "@/components/staking/StakePanel";
 import { RewardsPanel } from "@/components/staking/RewardsPanel";
 import { HowItWorksCard } from "@/components/staking/HowItWorksCard";
+import { SuccessOverlay, type SuccessKind, type SuccessState } from "@/components/staking/SuccessOverlay";
 import { useDividendPoolReads } from "@/hooks/useDividendPoolReads";
 import { useDividendPoolWrites } from "@/hooks/useDividendPoolWrites";
 import { formatCountdown, formatToken } from "@/lib/format";
@@ -38,6 +39,9 @@ export function StakingPage() {
   const [periods, setPeriods] = useState(1);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [resetTarget, setResetTarget] = useState(0);
+  const [success, setSuccess] = useState<SuccessState | null>(null);
+  const pending = useRef<{ kind: SuccessKind; amount: string } | null>(null);
+  const closeSuccess = useCallback(() => setSuccess(null), []);
 
   const { isConnected, address, poolInfo, userInfo, refetch } = useDividendPoolReads();
   const { data: wallet } = useBalance({ address });
@@ -55,10 +59,14 @@ export function StakingPage() {
 
   useEffect(() => {
     if (isConfirmed) {
+      if (pending.current) {
+        setSuccess({ ...pending.current, symbol: "ReAED", hash: txHash });
+        pending.current = null;
+      }
       refetch();
       reset();
     }
-  }, [isConfirmed, refetch, reset]);
+  }, [isConfirmed, refetch, reset, txHash]);
 
   const symbol = "ReAED";
 
@@ -150,18 +158,17 @@ export function StakingPage() {
   return (
     <>
       <Header />
-      <main className="wrap pb-16 pt-10 sm:pt-14">
-        <section className="mb-8 grid gap-6 lg:grid-cols-[1.25fr_1fr] lg:items-end">
-          <div className="grid gap-5">
+      <main className="wrap pb-12 pt-6 sm:pt-8">
+        <section className="mb-3 grid gap-4 lg:grid-cols-[1.3fr_1fr] lg:items-end">
+          <div className="grid gap-3">
             <span className="pill justify-self-start">
               <span className="pd">Live</span> Dividend pool on {appChain.name}
             </span>
-            <h1 className="text-[clamp(2.4rem,6vw,4.4rem)]">
+            <h1 className="text-[clamp(1.8rem,3.6vw,2.6rem)]">
               Stake reAED.
-              <br />
-              <span className="text-[var(--blue)]">Earn network revenue.</span>
+              <span className="block text-[var(--blue)]">Earn network revenue.</span>
             </h1>
-            <p className="max-w-[520px] text-[1.02rem] text-[var(--t2)]">
+            <p className="max-w-[480px] text-[0.92rem] text-[var(--t2)]">
               No inflation. No emissions. Rewards are paid from real INFRA network fees, shared by weight across
               30-day cycles.
             </p>
@@ -174,7 +181,7 @@ export function StakingPage() {
               </span>
               <span className="mono text-[0.7rem] text-white/40">Refreshes every 10s</span>
             </div>
-            <div className="text-[clamp(2.2rem,4.6vw,3.2rem)] font-semibold leading-none tracking-[-0.04em]">
+            <div className="text-[clamp(1.6rem,3vw,2.1rem)] font-semibold leading-none tracking-[-0.04em]">
               {formatToken(poolInfo.totalLocked, 2)}
               <span className="mono ml-2 text-[0.9rem] font-normal tracking-normal text-white/50">{symbol}</span>
             </div>
@@ -190,7 +197,7 @@ export function StakingPage() {
 
         <StatsCards cards={stats} />
 
-        <section className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1.45fr_1fr]">
+        <section className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1.35fr_1fr]">
           <StakePanel
             mode={mode}
             setMode={setMode}
@@ -205,8 +212,14 @@ export function StakingPage() {
             weightMetricValue={mode === "stake" ? "0.00%" : "0.00%"}
             termsAccepted={termsAccepted}
             setTermsAccepted={setTermsAccepted}
-            onStake={() => stake(amount, periods)}
-            onWithdraw={withdraw}
+            onStake={() => {
+              pending.current = { kind: "stake", amount: amount || "0" };
+              stake(amount, periods);
+            }}
+            onWithdraw={() => {
+              pending.current = { kind: "withdraw", amount: stakedAmount };
+              withdraw();
+            }}
             isStakeDisabled={Boolean(stakeDisabledReason)}
             stakeDisabledReason={stakeDisabledReason || contractError}
             isWithdrawDisabled={Boolean(withdrawDisabledReason)}
@@ -224,7 +237,10 @@ export function StakingPage() {
                   ? formatCountdown(rewardExpirySeconds)
                   : "--"
               }
-              onClaim={claim}
+              onClaim={() => {
+                pending.current = { kind: "claim", amount: pendingRewards };
+                claim();
+              }}
               isClaimDisabled={Boolean(claimDisabledReason)}
               claimDisabledReason={claimDisabledReason || contractError}
               busy={busy}
@@ -253,6 +269,8 @@ export function StakingPage() {
           </div>
         </section>
 
+        <SuccessOverlay state={success} explorer={explorer} onClose={closeSuccess} />
+
         {txHash && explorer ? (
           <a
             href={`${explorer}/tx/${txHash}`}
@@ -264,7 +282,7 @@ export function StakingPage() {
           </a>
         ) : null}
 
-        <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-6 text-[0.8rem] text-[var(--t3)]">
+        <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-6 text-[0.8rem] text-[var(--t3)]">
           <span>© {new Date().getFullYear()} INFRA · Dividend Pool</span>
           {explorer ? (
             <a
