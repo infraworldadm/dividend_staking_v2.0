@@ -161,7 +161,12 @@ export function StakingPage() {
   const claimDeadline = fmtDate(userInfo.rewardExpiryAt > 0n ? Number(userInfo.rewardExpiryAt) : prevCycle.claimUntil);
   const sharePct =
     poolInfo.totalWeight > 0n ? Number((userInfo.weight * 1_000_000n) / poolInfo.totalWeight) / 10_000 : 0;
-  const share = `${sharePct.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+  const share =
+    userInfo.weight === 0n
+      ? "accruing"
+      : sharePct < 0.01
+        ? "<0.01%"
+        : `${sharePct.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 
   const guide: GuideState = !isConnected
     ? { kind: "disconnected" }

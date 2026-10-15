@@ -41,7 +41,7 @@ export function GuideBanner({ state, symbol, go }: { state: GuideState; symbol: 
   if (state.kind === "earning") {
     return (
       <Banner tone="dark" eyebrow={`Earning · ${state.cycle}`} title={`Your ${state.amount} ${symbol} is earning in the ${state.cycle} cycle`}
-        body={`You hold ${state.share} of total pool weight. Rewards are your weight share of what the pool distributes — no fixed APR.`}>
+        body={`Your share of pool weight: ${state.share}. Rewards are your weight share of what the pool distributes — no fixed APR.`}>
         <button className="btn btn-w btn-sm" onClick={() => go("earning")}>
           View position <ArrowRight />
         </button>
