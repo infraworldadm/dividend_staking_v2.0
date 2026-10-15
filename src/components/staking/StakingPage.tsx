@@ -17,10 +17,11 @@ import {
   EmptyPanel,
   GuideBanner,
   GuideTabs,
-  PositionPanel,
+  PositionsPanel,
   type GuideState,
   type GuideTab,
   type PositionStatus,
+  type PositionView,
 } from "@/components/staking/StakeGuide";
 import { SuccessOverlay, type SuccessKind, type SuccessState } from "@/components/staking/SuccessOverlay";
 import { useStakingPool, useStakingWrites } from "@/hooks/useStakingPool";
@@ -34,7 +35,7 @@ const SYMBOL = "ReAED";
 /** Contract revert reasons → plain language. */
 function mapError(msg: string | null) {
   if (!msg) return null;
-  if (msg.includes("Already staked")) return "You already have a stake. Withdraw it after the lock to stake again.";
+  if (msg.includes("Too many positions")) return "You have the maximum of 20 open positions.";
   if (msg.includes("Lock not expired")) return "Your lock period has not ended yet.";
   if (msg.includes("No rewards")) return "No claimable rewards.";
   if (msg.includes("No stake found")) return "No stake found.";
@@ -72,8 +73,6 @@ export function StakingPage() {
   }, []);
 
   const cycleEndsIn = useCountdown(cycleEndTarget);
-  const lockEndsIn = useCountdown(Number(s.user.lockEnd));
-  const graceEndsIn = useCountdown(Number(s.graceEnd));
   const claimEndsIn = useCountdown(Number(s.pendingDeadline));
 
   // After a confirmed tx: success animation + refresh
@@ -89,44 +88,57 @@ export function StakingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [w.isConfirmed]);
 
-  // ---------- derived state ----------
+  // ---------- derived state (per position, then aggregated) ----------
   const nowSec = Math.floor(Date.now() / 1000);
   const { current: curCycle, next: nextCycle } = cyclesAround(nowSec);
   const cur = s.pool.currentEpoch > 0n ? Number(s.pool.currentEpoch) : null;
   const cycleProgress = Math.min(1, Math.max(0, (nowSec - curCycle.start) / (curCycle.end - curCycle.start)));
+  const GRACE = CLAIM_BUFFER_DAYS * 86400;
 
-  const u = s.user;
-  const hasStake = u.amount > 0n;
-  const activeFrom = Number(u.activeFrom);
-  const lastEarning = activeFrom + Number(u.periods) - 1;
-  const lockEnded = hasStake && u.lockEnd > 0n && nowSec >= Number(u.lockEnd);
-  const inGrace = lockEnded && nowSec < Number(s.graceEnd);
-  const queued = hasStake && cur !== null && cur < activeFrom;
-  const earning = hasStake && cur !== null && cur >= activeFrom && cur <= lastEarning;
+  const views: PositionView[] = s.positions.map((p, i) => {
+    const from = Number(p.activeFrom);
+    const last = from + Number(p.periods) - 1;
+    const lockEnd = Number(p.lockEnd);
+    const graceEnd = lockEnd + GRACE;
+    const status: PositionStatus =
+      nowSec >= lockEnd ? (nowSec < graceEnd ? "grace" : "graceOver") : cur !== null && cur < from ? "queued" : "earning";
+    return {
+      id: p.id,
+      status,
+      amount: formatToken(p.amount, 2),
+      months: Number(p.periods) === 1 ? cycleOfEpoch(from).label : `${cycleOfEpoch(from).label} → ${cycleOfEpoch(last).label}`,
+      lockEnd: fmtDate(lockEnd),
+      graceEnd: fmtDate(graceEnd),
+      graceCountdown: formatCountdown(Math.max(0, graceEnd - nowSec)),
+      lockCountdown: formatCountdown(Math.max(0, lockEnd - nowSec)),
+      claimable: formatToken(s.positionPending[i] ?? 0n, 2),
+    };
+  });
+  const sumBy = (st: PositionStatus) =>
+    s.positions.reduce((acc, p, i) => (views[i].status === st ? acc + p.amount : acc), 0n);
+  const countBy = (st: PositionStatus) => views.filter((v) => v.status === st).length;
+  const hasStake = s.positions.length > 0;
+  const graceCount = countBy("grace");
+  const graceOverCount = countBy("graceOver");
+  const earningCount = countBy("earning");
+  const queuedCount = countBy("queued");
+  const endedCount = graceCount + graceOverCount;
   const canClaim = s.pendingRewards > 0n;
+  // earliest grace deadline among positions in grace
+  const graceViews = s.positions
+    .map((p, i) => ({ end: Number(p.lockEnd) + GRACE, i }))
+    .filter((x) => views[x.i].status === "grace")
+    .sort((a, b) => a.end - b.end);
+  const graceRewards = graceViews.reduce((acc, x) => acc + (s.positionPending[x.i] ?? 0n), 0n);
+  const firstQueued = s.positions.find((_, i) => views[i].status === "queued");
 
-  const positionStatus: PositionStatus | null = !hasStake
-    ? null
-    : lockEnded
-      ? inGrace
-        ? "grace"
-        : "graceOver"
-      : queued
-        ? "queued"
-        : "earning";
-
-  const months = hasStake
-    ? Number(u.periods) === 1
-      ? cycleOfEpoch(activeFrom).label
-      : `${cycleOfEpoch(activeFrom).label} → ${cycleOfEpoch(lastEarning).label}`
-    : "—";
   const share = pct(s.currentWeight, s.currentTotalWeight);
   // Estimate: share × (rewards already received this month + what the dividend pool holds now)
   const poolNow = s.currentRewardSoFar + s.dividendPoolBalance;
   const estimate =
     s.currentTotalWeight > 0n ? formatToken((poolNow * s.currentWeight) / s.currentTotalWeight, 2) : "0.00";
 
-  const staked = formatToken(u.amount, 2);
+  const staked = formatToken(s.account.staked, 2);
   const pendingStr = formatToken(s.pendingRewards, 2);
   const contractError = mapError(w.errorMessage);
   const busy = w.isSigning || (w.hasActiveTx && w.isConfirming);
@@ -137,7 +149,7 @@ export function StakingPage() {
   const stakeDisabledReason = useMemo(() => {
     if (!s.configured) return "Staking opens once the contract is live.";
     if (!s.isConnected) return "Connect wallet to stake.";
-    if (hasStake) return "You already have a stake. Withdraw it after the lock to stake again.";
+    if (s.positions.length >= 20) return "You have the maximum of 20 open positions.";
     if (!termsAccepted) return "Accept the terms to continue.";
     try {
       const parsed = parseEther(amount || "0");
@@ -147,44 +159,43 @@ export function StakingPage() {
       return "Enter a valid amount.";
     }
     return null;
-  }, [s.configured, s.isConnected, hasStake, termsAccepted, amount, wallet?.value]);
-
-  const withdrawDisabledReason = !s.isConnected
-    ? "Connect wallet."
-    : !hasStake
-      ? "No stake found."
-      : !lockEnded
-        ? `Locked until ${fmtDate(Number(u.lockEnd))} (${formatCountdown(lockEndsIn)}).`
-        : null;
+  }, [s.configured, s.isConnected, s.positions.length, termsAccepted, amount, wallet?.value]);
 
   const claimDisabledReason = !s.isConnected ? "Connect wallet to claim." : !canClaim ? "No claimable rewards right now." : null;
 
-  // ---------- guidance ----------
+  // ---------- guidance (most urgent first) ----------
   const guide: GuideState = !s.configured
     ? { kind: "notConfigured" }
     : !s.isConnected
       ? { kind: "disconnected" }
-      : inGrace
+      : graceCount > 0
         ? {
             kind: "grace",
-            amount: staked,
-            rewards: pendingStr,
-            deadline: fmtDate(Number(s.graceEnd)),
-            countdown: formatCountdown(graceEndsIn),
+            amount: formatToken(sumBy("grace"), 2),
+            rewards: formatToken(graceRewards, 2),
+            deadline: fmtDate(graceViews[0].end),
+            countdown: formatCountdown(Math.max(0, graceViews[0].end - nowSec)),
+            count: graceCount,
           }
-        : lockEnded
-          ? { kind: "graceOver", amount: staked }
-          : canClaim
-            ? {
-                kind: "claim",
-                amount: pendingStr,
-                deadline: fmtDate(Number(s.pendingDeadline)),
-                countdown: formatCountdown(claimEndsIn),
-              }
-            : earning
-              ? { kind: "earning", amount: staked, cycle: curCycle.label, share, lastCycle: cycleOfEpoch(lastEarning).label }
-              : queued
-                ? { kind: "queued", amount: staked, cycle: cycleOfEpoch(activeFrom).label, start: fmtDate(cycleOfEpoch(activeFrom).start) }
+        : canClaim
+          ? {
+              kind: "claim",
+              amount: pendingStr,
+              deadline: fmtDate(Number(s.pendingDeadline)),
+              countdown: formatCountdown(claimEndsIn),
+            }
+          : graceOverCount > 0
+            ? { kind: "graceOver", amount: formatToken(sumBy("graceOver"), 2), count: graceOverCount }
+            : earningCount > 0
+              ? { kind: "earning", amount: formatToken(sumBy("earning"), 2), cycle: curCycle.label, share, count: earningCount }
+              : queuedCount > 0 && firstQueued
+                ? {
+                    kind: "queued",
+                    amount: formatToken(sumBy("queued"), 2),
+                    cycle: cycleOfEpoch(Number(firstQueued.activeFrom)).label,
+                    start: fmtDate(cycleOfEpoch(Number(firstQueued.activeFrom)).start),
+                    count: queuedCount,
+                  }
                 : {
                     kind: "idle",
                     nextCycle: nextCycle.label,
@@ -194,7 +205,7 @@ export function StakingPage() {
                   };
 
   // Default tab follows the wallet's state until the user picks one.
-  const autoTab: GuideTab = canClaim && !lockEnded ? "claim" : hasStake ? "earning" : "stake";
+  const autoTab: GuideTab = endedCount > 0 ? "earning" : canClaim ? "claim" : hasStake ? "earning" : "stake";
   const activeTab = tabTouched.current ? tab : autoTab;
   const setTab = (t: GuideTab) => {
     tabTouched.current = true;
@@ -214,15 +225,29 @@ export function StakingPage() {
     pending.current = { kind: "claim", amount: pendingStr };
     w.claim();
   };
-  const doWithdraw = () => {
-    pending.current = { kind: "withdraw", amount: inGrace && canClaim ? `${staked} + ${pendingStr}` : staked };
-    w.withdraw();
+  const doWithdraw = (id: bigint) => {
+    const i = s.positions.findIndex((p) => p.id === id);
+    const v = views[i];
+    pending.current = {
+      kind: "withdraw",
+      amount: v && v.status === "grace" && v.claimable !== "0.00" ? `${v.amount} + ${v.claimable}` : v?.amount ?? "0",
+    };
+    w.withdraw(id);
+  };
+  const doWithdrawAll = () => {
+    pending.current = { kind: "withdraw", amount: formatToken(sumBy("grace") + sumBy("graceOver"), 2) };
+    w.withdrawAll();
   };
 
   const stats = [
     { label: "Wallet balance", value: formatToken(wallet?.value ?? 0n, 2), sub: SYMBOL, icon: icons.pool },
     { label: "Total staked", value: formatToken(s.pool.totalStaked, 2), sub: SYMBOL, icon: icons.total },
-    { label: "Your stake", value: staked, sub: positionStatus ? months : SYMBOL, icon: icons.yours },
+    {
+      label: "Your stake",
+      value: staked,
+      sub: hasStake ? `${s.positions.length} ${s.positions.length === 1 ? "position" : "positions"}` : SYMBOL,
+      icon: icons.yours,
+    },
     { label: "Cycle ends in", value: formatCountdown(cycleEndsIn), sub: `${curCycle.label} · UTC`, icon: icons.reset },
   ];
 
@@ -289,7 +314,8 @@ export function StakingPage() {
           </p>
           <p>
             Enter an amount and pick a <b>lock of 1–12 months</b>. You’ll see who’s already joining, your projected share,
-            and exactly which months you earn in.
+            and exactly which months you earn in. You can open <b>several stakes</b> with different locks — each one is
+            tracked as its own position.
           </p>
         </>
       ),
@@ -349,7 +375,7 @@ export function StakingPage() {
       title: "Next time you log in",
       body: (
         <p>
-          Check the banner, or use these shortcuts: <b>My stake</b>, <b>Claim</b> after a month closes, or <b>Stake</b>{" "}
+          Check the banner, or use these shortcuts: <b>My stakes</b>, <b>Claim</b> after a month closes, or <b>Stake</b>{" "}
           for next month. Replay this tour from <b>How it works</b> in the header.
         </p>
       ),
@@ -421,35 +447,34 @@ export function StakingPage() {
             <GuideTabs
               tab={activeTab}
               setTab={setTab}
-              labels={{ earning: "My stake", claim: "Claim", stake: `Stake for ${nextCycle.label.split(" ")[0]}` }}
-              dots={{ claim: canClaim, earning: lockEnded }}
+              labels={{ earning: "My stakes", claim: "Claim", stake: `Stake for ${nextCycle.label.split(" ")[0]}` }}
+              dots={{ claim: canClaim, earning: endedCount > 0 }}
             />
 
             <div className="tab-panel grid content-start gap-3" data-tour="panel" key={activeTab}>
               {activeTab === "earning" ? (
-                positionStatus ? (
-                  <PositionPanel
-                    status={positionStatus}
-                    staked={staked}
+                hasStake ? (
+                  <PositionsPanel
                     symbol={SYMBOL}
-                    months={months}
-                    progress={cycleProgress}
+                    totalStaked={staked}
+                    count={s.positions.length}
                     cycle={curCycle.label}
+                    progress={cycleProgress}
                     share={share}
                     estimate={estimate}
-                    lockEnd={fmtDate(Number(u.lockEnd))}
-                    graceEnd={fmtDate(Number(s.graceEnd))}
-                    graceCountdown={formatCountdown(graceEndsIn)}
-                    claimable={pendingStr}
-                    totalClaimed={formatToken(u.totalClaimed, 2)}
-                    totalExpired={formatToken(u.totalExpired, 2)}
+                    totalClaimed={formatToken(s.account.totalClaimed, 2)}
+                    totalExpired={formatToken(s.account.totalExpired, 2)}
+                    endedCount={endedCount}
+                    positions={views}
                     onWithdraw={doWithdraw}
-                    withdrawDisabled={withdrawDisabledReason || contractError}
+                    onWithdrawAll={doWithdrawAll}
+                    onAdd={() => setTab("stake")}
                     busy={busy}
+                    error={contractError}
                   />
                 ) : (
                   <EmptyPanel
-                    label="My stake"
+                    label="My stakes"
                     title="You don’t have a stake yet"
                     body={`Stake now to join the ${nextCycle.label} cycle. Earning starts ${fmtDate(nextCycle.start)}.`}
                     cta={`Stake for ${nextCycle.label}`}
@@ -476,8 +501,8 @@ export function StakingPage() {
                       {CLAIM_BUFFER_DAYS} days. Rewards not claimed in time are forfeited. Withdrawing after your lock
                       also pays any rewards still claimable.
                     </p>
-                    <div className="row"><span>Claimed to date</span><span className="font-medium">{formatToken(u.totalClaimed, 2)} {SYMBOL}</span></div>
-                    <div className="row"><span>Forfeited</span><span className="font-medium">{formatToken(u.totalExpired, 2)} {SYMBOL}</span></div>
+                    <div className="row"><span>Claimed to date</span><span className="font-medium">{formatToken(s.account.totalClaimed, 2)} {SYMBOL}</span></div>
+                    <div className="row"><span>Forfeited</span><span className="font-medium">{formatToken(s.account.totalExpired, 2)} {SYMBOL}</span></div>
                   </div>
                 </>
               ) : null}
@@ -493,15 +518,7 @@ export function StakingPage() {
                 />
               ) : null}
               {activeTab === "stake" ? (
-                hasStake ? (
-                  <EmptyPanel
-                    label={`Stake for ${nextCycle.label}`}
-                    title="You already have a stake"
-                    body={`One stake per wallet. Yours earns in ${months}. After the lock ends, withdraw it (within ${CLAIM_BUFFER_DAYS} days to keep your rewards) and you can stake again.`}
-                    cta="View my stake"
-                    onCta={() => setTab("earning")}
-                  />
-                ) : (
+                (
                   <StakePanel
                     amount={amount}
                     setAmount={setAmount}
@@ -528,7 +545,7 @@ export function StakingPage() {
             <div className="tile" data-tour="where">
               <span className="lbl"><i /> Where to go</span>
               <button className="row w-full text-left" onClick={() => goTab("earning")}>
-                <span>Already staked?</span><span className="font-medium text-[var(--blue)]">My stake →</span>
+                <span>Already staked?</span><span className="font-medium text-[var(--blue)]">My stakes →</span>
               </button>
               <div className="hr" />
               <button className="row w-full text-left" onClick={() => goTab("claim")}>

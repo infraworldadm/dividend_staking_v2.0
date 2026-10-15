@@ -1,13 +1,20 @@
-/** InfraStakingPool.users(address) */
-export type StakeUser = {
+/** InfraStakingPool.positionsOf(address)[i] */
+export type StakePosition = {
   amount: bigint;
+  id: bigint;
   stakedAt: bigint;
   periods: bigint;
   activeFrom: bigint;
   lockEnd: bigint;
   lastSettledEpoch: bigint;
+};
+
+/** InfraStakingPool.accounts(address) */
+export type StakeAccount = {
+  staked: bigint;
   totalClaimed: bigint;
   totalExpired: bigint;
+  nextId: bigint;
 };
 
 export type PoolState = {

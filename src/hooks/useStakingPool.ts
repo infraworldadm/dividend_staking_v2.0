@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { parseEther } from "viem";
 import { useAccount, useBalance, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { isStakingConfigured, stakingPoolAbi, stakingPoolAddress } from "@/lib/web3/contract";
-import type { EpochChain, PoolState, StakeUser } from "@/types/contract";
+import type { EpochChain, PoolState, StakeAccount, StakePosition } from "@/types/contract";
 import { cyclesAround, epochIdOf } from "@/lib/cycles";
 
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
@@ -26,10 +26,10 @@ export function useStakingPool() {
       { ...base, functionName: "currentEpoch" },
       { ...base, functionName: "dividendPool" },
       { ...base, functionName: "totalRewardsClaimed" },
-      { ...base, functionName: "users", args: [who] },
+      { ...base, functionName: "accounts", args: [who] },
       { ...base, functionName: "pendingRewards", args: [who] },
       { ...base, functionName: "currentEpochShare", args: [who] },
-      { ...base, functionName: "graceEnd", args: [who] },
+      { ...base, functionName: "positionsOf", args: [who] },
       { ...base, functionName: "totalWeight", args: [nextId] },
       { ...base, functionName: "epochReward", args: [prevId] },
     ],
@@ -46,19 +46,33 @@ export function useStakingPool() {
     [data],
   );
 
-  const user = useMemo<StakeUser>(() => {
-    const u = (data?.[4]?.result as readonly unknown[] | undefined) ?? [];
-    return {
-      amount: big(u[0]),
-      stakedAt: big(u[1]),
-      periods: big(u[2]),
-      activeFrom: big(u[3]),
-      lockEnd: big(u[4]),
-      lastSettledEpoch: big(u[5]),
-      totalClaimed: big(u[6]),
-      totalExpired: big(u[7]),
-    };
+  const account = useMemo<StakeAccount>(() => {
+    const a = (data?.[4]?.result as readonly unknown[] | undefined) ?? [];
+    return { staked: big(a[0]), totalClaimed: big(a[1]), totalExpired: big(a[2]), nextId: big(a[3]) };
   }, [data]);
+
+  const positions = useMemo<StakePosition[]>(() => {
+    const list = (data?.[7]?.result as readonly Record<string, unknown>[] | undefined) ?? [];
+    return list.map((p) => ({
+      amount: big(p.amount),
+      id: big(p.id),
+      stakedAt: big(p.stakedAt),
+      periods: big(p.periods),
+      activeFrom: big(p.activeFrom),
+      lockEnd: big(p.lockEnd),
+      lastSettledEpoch: big(p.lastSettledEpoch),
+    }));
+  }, [data]);
+
+  // Claimable rewards per position (same order as `positions`).
+  const { data: perPos, refetch: refetchPerPos } = useReadContracts({
+    contracts: positions.map((_, i) => ({ ...base, functionName: "pendingOfPosition", args: [who, BigInt(i)] }) as const),
+    query: { enabled: isStakingConfigured && positions.length > 0, refetchInterval: 10_000 },
+  });
+  const positionPending = positions.map((_, i) => {
+    const r = perPos?.[i]?.result as readonly [bigint, bigint] | undefined;
+    return r ? r[0] : 0n;
+  });
 
   const pending = (data?.[5]?.result as readonly [bigint, bigint] | undefined) ?? [0n, 0n];
   const share = (data?.[6]?.result as readonly [bigint, bigint, bigint, bigint] | undefined) ?? [0n, 0n, 0n, 0n];
@@ -75,13 +89,14 @@ export function useStakingPool() {
     isConnected,
     isLoading,
     pool,
-    user,
+    account,
+    positions,
+    positionPending,
     pendingRewards: pending[0],
     pendingDeadline: pending[1],
     currentWeight: share[1],
     currentTotalWeight: share[2],
     currentRewardSoFar: share[3],
-    graceEnd: big(data?.[7]?.result),
     /** principal already scheduled to earn next month */
     nextJoinTotal: big(data?.[8]?.result) / nextSeconds,
     /** principal earning in the running month */
@@ -91,6 +106,7 @@ export function useStakingPool() {
     refetch: () => {
       refetch();
       refetchDiv();
+      refetchPerPos();
     },
   };
 }
@@ -133,7 +149,8 @@ export function useStakingWrites() {
     stake: (amount: string, periods: number) =>
       writeContract({ ...base, functionName: "stake", args: [BigInt(periods)], value: parseEther(amount || "0") }),
     claim: () => writeContract({ ...base, functionName: "claim" }),
-    withdraw: () => writeContract({ ...base, functionName: "withdraw" }),
+    withdraw: (positionId: bigint) => writeContract({ ...base, functionName: "withdraw", args: [positionId] }),
+    withdrawAll: () => writeContract({ ...base, functionName: "withdrawAll" }),
     txHash,
     hasActiveTx: Boolean(txHash),
     isSigning,

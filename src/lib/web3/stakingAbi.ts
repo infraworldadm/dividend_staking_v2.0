@@ -30,6 +30,53 @@ export const stakingPoolAbi = [
   },
   {
     "type": "function",
+    "name": "MAX_POSITIONS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "accounts",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "staked",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalClaimed",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalExpired",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "nextId",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "activeAmount",
     "inputs": [],
     "outputs": [
@@ -362,14 +409,8 @@ export const stakingPoolAbi = [
   },
   {
     "type": "function",
-    "name": "graceEnd",
-    "inputs": [
-      {
-        "name": "user",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
+    "name": "lastSyncedEpoch",
+    "inputs": [],
     "outputs": [
       {
         "name": "",
@@ -381,7 +422,7 @@ export const stakingPoolAbi = [
   },
   {
     "type": "function",
-    "name": "lastSyncedEpoch",
+    "name": "legacyTotalLocked",
     "inputs": [],
     "outputs": [
       {
@@ -425,6 +466,35 @@ export const stakingPoolAbi = [
   },
   {
     "type": "function",
+    "name": "pendingOfPosition",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "nextDeadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "pendingRewards",
     "inputs": [
       {
@@ -449,7 +519,7 @@ export const stakingPoolAbi = [
   },
   {
     "type": "function",
-    "name": "releaseStake",
+    "name": "positionCount",
     "inputs": [
       {
         "name": "user",
@@ -457,8 +527,70 @@ export const stakingPoolAbi = [
         "internalType": "address"
       }
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "positionsOf",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct InfraStakingPool.Position[]",
+        "components": [
+          {
+            "name": "amount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "id",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "stakedAt",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "periods",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "activeFrom",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "lockEnd",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "lastSettledEpoch",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -547,7 +679,13 @@ export const stakingPoolAbi = [
         "internalType": "uint256"
       }
     ],
-    "outputs": [],
+    "outputs": [
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
     "stateMutability": "payable"
   },
   {
@@ -677,7 +815,7 @@ export const stakingPoolAbi = [
     ],
     "outputs": [
       {
-        "name": "",
+        "name": "r",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -701,61 +839,7 @@ export const stakingPoolAbi = [
     ],
     "outputs": [
       {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "users",
-    "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "stakedAt",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "periods",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "activeFrom",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "lockEnd",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "lastSettledEpoch",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "totalClaimed",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "totalExpired",
+        "name": "w",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -765,6 +849,19 @@ export const stakingPoolAbi = [
   {
     "type": "function",
     "name": "withdraw",
+    "inputs": [
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawAll",
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
@@ -800,18 +897,6 @@ export const stakingPoolAbi = [
       },
       {
         "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "fromEpoch",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "toEpoch",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -988,6 +1073,12 @@ export const stakingPoolAbi = [
         "internalType": "address"
       },
       {
+        "name": "positionId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
         "name": "amount",
         "type": "uint256",
         "indexed": false,
@@ -1038,13 +1129,13 @@ export const stakingPoolAbi = [
         "internalType": "address"
       },
       {
-        "name": "amount",
+        "name": "positionId",
         "type": "uint256",
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256"
       },
       {
-        "name": "epoch",
+        "name": "amount",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1052,7 +1143,7 @@ export const stakingPoolAbi = [
       {
         "name": "caller",
         "type": "address",
-        "indexed": true,
+        "indexed": false,
         "internalType": "address"
       }
     ],
