@@ -14,7 +14,7 @@ export const infraWallet = (): Wallet => {
     id: "infra-wallet",
     name: "INFRA Wallet",
     iconUrl: "/infra-wallet.png",
-    iconBackground: "#0A0B0E",
+    iconBackground: "#1F5BFF",
     downloadUrls: {
       browserExtension: "https://infraworld.org/wallet",
     },
