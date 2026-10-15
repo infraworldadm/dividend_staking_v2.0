@@ -292,8 +292,8 @@ export function StakingPage() {
       title: "Where rewards come from",
       body: (
         <p>
-          Network fees collect in the <b>dividend pool</b> during the month. At month end the admin sends that balance to
-          the staking pool, and it is split among that month’s stakers.
+          Network fees collect in the <b>dividend pool</b> during the month. When the month closes, that balance moves to
+          the staking pool automatically and is split among that month’s stakers.
         </p>
       ),
     },

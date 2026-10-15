@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatEther, parseEther, type Address } from "viem";
+import { parseEther, type Address } from "viem";
 import {
   useAccount,
   useBalance,
@@ -22,12 +22,23 @@ const same = (a?: string, b?: string) => Boolean(a && b && a.toLowerCase() === b
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
 
 /**
- * Admin console for the monthly routine:
- *  1) check the dividend pool → staking link, 2) send the month's rewards,
- *  3) sweep expired months to the admin wallet, 4) return abandoned stakes,
- *  5) recover surplus. Owner-only actions are disabled for other wallets.
+ * Admin analytics (behind the username/password login).
+ * Payouts are AUTOMATIC on-chain: the dividend pool is pulled at month start and expired
+ * rewards are swept to the admin wallet — nobody has to sign anything monthly.
+ * Owner-wallet tools live in the collapsed "Manual overrides" section only.
  */
 export function AdminPage() {
+  const [me, setMe] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/admin/me")
+      .then((r) => r.json())
+      .then((j: { user?: string | null }) => setMe(j.user ?? null))
+      .catch(() => setMe(null));
+  }, []);
+  const logout = async () => {
+    await fetch("/api/admin/logout", { method: "POST" });
+    window.location.href = "/admin/login";
+  };
   const { address } = useAccount();
   const client = usePublicClient();
   const sp = { abi: stakingPoolAbi, address: stakingPoolAddress! } as const;
@@ -51,6 +62,11 @@ export function AdminPage() {
       { ...sp, functionName: "openPositions" },
       { ...sp, functionName: "allowedPeriods" },
       { ...sp, functionName: "totalWeight", args: [BigInt(curId)] },
+      { ...sp, functionName: "rewardOf", args: [BigInt(curId)] },
+      { ...sp, functionName: "autoPullEnabled" },
+      { ...sp, functionName: "lastPulledEpoch" },
+      { ...sp, functionName: "nextSweepEpoch" },
+      { ...sp, functionName: "needsPoke" },
     ],
     query: { enabled: isStakingConfigured, refetchInterval: 15_000 },
   });
@@ -78,6 +94,11 @@ export function AdminPage() {
   });
 
   const { data: poolBal } = useBalance({ address: stakingPoolAddress, query: { refetchInterval: 15_000 } });
+  const soFar = big(13);
+  const autoPull = r(14) as boolean | undefined;
+  const lastPulled = Number(big(15));
+  const nextSweep = Number(big(16));
+  const needsPoke = r(17) as boolean | undefined;
   const allowed = ((r(11) as readonly bigint[] | undefined) ?? []).map(Number);
   const isOwner = same(address, owner);
   const isDvOwner = same(address, dvOwner);
@@ -98,7 +119,7 @@ export function AdminPage() {
     const deadline = Number(x?.[2] ?? 0n);
     const left = reward - claimed;
     const sweepable = !swept && left > 0n && (now >= deadline || weight === 0n);
-    return { e, label: cycleOfEpoch(e).label, reward, claimed, swept, deadline, left, sweepable, open: now < deadline && weight > 0n };
+    return { e, label: cycleOfEpoch(e).label, reward, claimed, swept, deadline, left, sweepable, weight, open: now < deadline && weight > 0n };
   });
 
   // ---- every open position (from Staked events → positionsOf) ----
@@ -186,9 +207,9 @@ export function AdminPage() {
   }, [tx.isSuccess]);
   const errMsg = error ? ((error as { shortMessage?: string }).shortMessage ?? error.message) : null;
 
-  const [sendAmt, setSendAmt] = useState("");
   const [surplusAmt, setSurplusAmt] = useState("");
-  const dvBalance = dvBal?.value ?? 0n;
+  const nextPay = cycleOfEpoch(curId + 1);
+  const owedOpen = monthRows.filter((m) => m.open && !m.swept).reduce((a, m) => a + m.left, 0n);
   const explorer = appChain.blockExplorers?.default.url.replace(/\/$/, "");
 
   if (!isStakingConfigured) {
@@ -211,12 +232,14 @@ export function AdminPage() {
       <main className="wrap grid gap-3 pb-12 pt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <span className="lbl b"><i /> Admin console</span>
-            <h1 className="mt-2 text-[clamp(1.5rem,3vw,2rem)]">Monthly operations</h1>
+            <span className="lbl b"><i /> Admin · analytics</span>
+            <h1 className="mt-2 text-[clamp(1.5rem,3vw,2rem)]">Staking pool overview</h1>
           </div>
-          <span className={`st ${isOwner ? "st-active" : "st-closed"}`}>
-            {address ? (isOwner ? "Connected as staking owner" : "Not the owner — view only") : "Connect the owner wallet"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="st st-active">Payouts automatic</span>
+            {me ? <span className="mono text-[0.75rem] text-[var(--t3)]">{me}</span> : null}
+            <button className="btn btn-k btn-sm !h-8" onClick={logout}>Log out</button>
+          </div>
         </div>
 
         {/* 0. Overview */}
@@ -229,8 +252,8 @@ export function AdminPage() {
             <div><span>Staking contract balance</span><b>{formatToken(poolBal?.value ?? 0n, 2)} {SYMBOL}</b></div>
             <div><span>Earning in {current.label}</span><b>{formatToken(sum(byStatus("earning")), 2)} {SYMBOL}</b></div>
             <div><span>Joining next month</span><b>{formatToken(sum(byStatus("queued")), 2)} {SYMBOL}</b></div>
-            <div><span>Dividend pool (to send)</span><b>{formatToken(dvBal?.value ?? 0n, 2)} {SYMBOL}</b></div>
-            <div><span>{current.label} reward pool so far</span><b>{formatToken(big(8), 2)} {SYMBOL}</b></div>
+            <div><span>{current.label} reward pool so far</span><b>{formatToken(soFar, 2)} {SYMBOL}</b><small>auto-paid {fmtDate(nextPay.start)}</small></div>
+            <div><span>Unclaimed, still claimable</span><b>{formatToken(owedOpen, 2)} {SYMBOL}</b><small>owed to stakers</small></div>
           </div>
           <div className="adm-grid">
             <div><span>Withdrawable now (in grace)</span><b>{formatToken(sum(byStatus("grace")), 2)} {SYMBOL}</b><small>{byStatus("grace").length} positions</small></div>
@@ -333,69 +356,39 @@ export function AdminPage() {
           </div>
         </div>
 
-        {/* 1. Setup & link */}
+        {/* Automation status */}
         <div className="tile !gap-2">
-          <span className="lbl"><i /> 1 · Setup</span>
+          <span className="lbl"><i /> Automation (no admin action needed)</span>
           <div className="adm-grid">
-            <div><span>Staking contract</span><b className="mono">{short(stakingPoolAddress)}</b></div>
-            <div><span>Owner</span><b className="mono">{short(owner)}</b></div>
-            <div><span>Dividend pool</span><b className="mono">{short(dividend)}</b></div>
-            <div><span>Admin wallet (expired rewards)</span><b className="mono">{short(adminWallet)}</b></div>
+            <div><span>Auto-pull from dividend pool</span><b>{autoPull === undefined ? "—" : autoPull ? "On" : "Off"}</b><small>at the start of each month</small></div>
+            <div><span>Last month paid out</span><b>{lastPulled ? cycleOfEpoch(lastPulled - 1).label : "—"}</b></div>
+            <div><span>Next payout</span><b>{nextPay.label.split(" ")[0]} 1</b><small>{current.label} pool → {current.label} stakers</small></div>
+            <div><span>Expired-reward sweeper</span><b>{nextSweep ? `from ${cycleOfEpoch(nextSweep).label}` : "—"}</b><small>→ {short(adminWallet)}</small></div>
           </div>
-          <div className="row mt-1">
-            <span>Dividend pool sends to this staking contract?</span>
+          <div className="row">
+            <span>Dividend pool linked to this staking contract</span>
             <span className={`st ${linked ? "st-active" : "st-claim"}`}>{linkedTo === undefined ? "Checking…" : linked ? "Linked" : `No — points to ${short(linkedTo)}`}</span>
           </div>
-          {!linked && linkedTo !== undefined ? (
-            <button
-              className="btn btn-b btn-sm justify-self-start"
-              disabled={!isDvOwner || busy}
-              onClick={() => writeContract({ ...dp, functionName: "setStakingContract", args: [stakingPoolAddress!] })}
-            >
-              Link dividend pool → staking {isDvOwner ? "" : "(dividend pool owner only)"}
-            </button>
-          ) : null}
-        </div>
-
-        {/* 2. Month-end rewards */}
-        <div className="tile !gap-2.5">
-          <span className="lbl"><i /> 2 · Send this month’s rewards</span>
-          <div className="adm-grid">
-            <div><span>Dividend pool balance</span><b>{formatToken(dvBalance, 2)} {SYMBOL}</b></div>
-            <div><span>Already in {current.label} pool</span><b>{formatToken(big(8), 2)} {SYMBOL}</b></div>
-            <div><span>Sent to staking (lifetime)</span><b>{formatToken((dv?.[3]?.result as bigint) ?? 0n, 2)} {SYMBOL}</b></div>
-            <div><span>Window</span><b>Before {fmtDate(current.end - 1)} 23:59 UTC</b></div>
+          <div className="row">
+            <span>Pending automation step</span>
+            <span className={`st ${needsPoke ? "st-claim" : "st-active"}`}>{needsPoke ? "Runs with the next transaction / daily keeper" : "Up to date"}</span>
           </div>
-          <p className="text-[0.82rem] text-[var(--t2)]">
-            Anything sent now is credited to <b>{current.label}</b> and split among its stakers when the month closes.
-            Send on the last day before 00:00 UTC.
+          <p className="text-[0.76rem] text-[var(--t3)]">
+            The first transaction of a new month (any stake, claim or withdraw — or the daily keeper) moves the dividend pool
+            balance into the month that just closed. Rewards unclaimed after {CLAIM_BUFFER_DAYS} days go to the admin wallet automatically.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <div className="field !py-1.5 min-w-[220px] flex-1">
-              <input value={sendAmt} onChange={(e) => setSendAmt(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="Amount" />
-              <button className="btn btn-k !h-7 !px-3 !text-[0.75rem]" onClick={() => setSendAmt(formatEther(dvBalance))}>All</button>
-            </div>
-            <button
-              className="btn btn-b"
-              disabled={!isDvOwner || !linked || busy || !sendAmt || Number(sendAmt) <= 0}
-              onClick={() => writeContract({ ...dp, functionName: "sendRewardsToStaking", args: [parseEther(sendAmt)] })}
-            >
-              Send to staking
-            </button>
-          </div>
-          {!isDvOwner && address ? <p className="text-[0.76rem] text-[var(--t3)]">Only the dividend pool owner ({short(dvOwner)}) can send.</p> : null}
         </div>
 
         {/* 3. Expired months */}
         <div className="tile !gap-2">
-          <span className="lbl"><i /> 3 · Expired rewards → admin wallet</span>
+          <span className="lbl"><i /> Monthly payouts</span>
           <p className="text-[0.82rem] text-[var(--t2)]">
-            After a month’s {CLAIM_BUFFER_DAYS}-day claim window, unclaimed rewards can be swept to the admin wallet. Anyone can trigger it; funds only go to {short(adminWallet)}.
+            Each closed month: pool paid in, claimed by stakers, and what is left. After {CLAIM_BUFFER_DAYS} days the rest goes to {short(adminWallet)} automatically.
           </p>
           <div className="overflow-x-auto">
             <table className="cyc !min-w-[640px]">
               <thead>
-                <tr><th>Month</th><th>Pool</th><th>Claimed</th><th>Unclaimed</th><th>Claim until</th><th /></tr>
+                <tr><th>Month</th><th>Pool</th><th>Claimed</th><th>Unclaimed</th><th>Claim until</th><th>Status</th></tr>
               </thead>
               <tbody>
                 {monthRows.map((m) => (
@@ -406,13 +399,9 @@ export function AdminPage() {
                     <td className="mono">{m.swept ? "swept" : formatToken(m.left, 2)}</td>
                     <td>{m.deadline ? fmtDate(m.deadline) : "—"}</td>
                     <td>
-                      {m.sweepable ? (
-                        <button className="btn btn-k btn-sm !h-8" disabled={busy} onClick={() => writeContract({ ...sp, functionName: "sweepExpired", args: [BigInt(m.e)] })}>
-                          Sweep {formatToken(m.left, 2)}
-                        </button>
-                      ) : (
-                        <span className="mono text-[0.7rem] text-[var(--t3)]">{m.swept ? "done" : m.open ? "claim open" : "—"}</span>
-                      )}
+                      <span className={`st ${m.swept ? "st-closed" : m.open ? "st-claim" : m.sweepable ? "st-next" : "st-closed"}`}>
+                        {m.swept ? "Closed · rest to admin" : m.open ? "Claim open" : m.sweepable ? "Auto-sweep pending" : m.reward === 0n ? "No pool" : "Closed"}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -424,11 +413,11 @@ export function AdminPage() {
         {/* 4. Abandoned stakes */}
         <div className="tile !gap-2">
           <div className="flex items-center justify-between">
-            <span className="lbl"><i /> 4 · Return abandoned stakes</span>
+            <span className="lbl"><i /> Stakes past grace</span>
             <button className="text-[0.8rem] text-[var(--blue)]" onClick={() => setScanKey((k) => k + 1)}>{scanning ? "Scanning…" : "Rescan"}</button>
           </div>
           <p className="text-[0.82rem] text-[var(--t2)]">
-            Positions past lock + {CLAIM_BUFFER_DAYS}-day grace that the owner never withdrew. Releasing sends the principal to each staker’s own wallet (rewards were already forfeited).
+            Positions past lock + {CLAIM_BUFFER_DAYS}-day grace not yet withdrawn. The principal stays safe — the staker can withdraw it any time (rewards were forfeited).
           </p>
           {abandoned.length === 0 ? (
             <p className="mono text-[0.78rem] text-[var(--t3)]">{scanning ? "Scanning stakers…" : "None right now."}</p>
@@ -443,20 +432,13 @@ export function AdminPage() {
                   </li>
                 ))}
               </ul>
-              <button
-                className="btn btn-b btn-sm justify-self-start"
-                disabled={busy}
-                onClick={() => writeContract({ ...sp, functionName: "releaseStakes", args: [abandoned.map((a) => a.user)] })}
-              >
-                Release all ({abandoned.length} wallets)
-              </button>
             </>
           )}
         </div>
 
         {/* 5. Totals & surplus */}
         <div className="tile !gap-2">
-          <span className="lbl"><i /> 5 · Totals & surplus</span>
+          <span className="lbl"><i /> Lifetime totals</span>
           <div className="adm-grid">
             <div><span>Total staked (principal)</span><b>{formatToken(big(3), 2)} {SYMBOL}</b></div>
             <div><span>Rewards received</span><b>{formatToken(big(5), 2)} {SYMBOL}</b></div>
@@ -464,6 +446,30 @@ export function AdminPage() {
             <div><span>Expired swept to admin</span><b>{formatToken(big(7), 2)} {SYMBOL}</b></div>
           </div>
           <div className="row"><span>Surplus (balance − principal, includes unclaimed rewards)</span><b>{formatToken(big(4), 2)} {SYMBOL}</b></div>
+        </div>
+
+        {/* Manual overrides (owner wallet) — normally never needed */}
+        <details className="tile !gap-2">
+          <summary className="cursor-pointer text-[0.85rem] font-medium">Manual overrides (wallet signature required) — normally not needed</summary>
+          <p className="text-[0.76rem] text-[var(--t3)]">
+            {address ? (isOwner ? "Connected as staking owner." : `Connected wallet is not the owner (${short(owner)}). Only “Run automation now” and “Release” work from any wallet.`) : "Connect a wallet to use these."}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn btn-k btn-sm" disabled={!address || busy || !needsPoke} onClick={() => writeContract({ ...sp, functionName: "poke" })}>
+              Run automation now
+            </button>
+            <button className="btn btn-k btn-sm" disabled={!address || busy || abandoned.length === 0} onClick={() => writeContract({ ...sp, functionName: "releaseStakes", args: [abandoned.map((a) => a.user)] })}>
+              Release past-grace stakes ({abandoned.length})
+            </button>
+            {!linked && linkedTo !== undefined ? (
+              <button className="btn btn-k btn-sm" disabled={!isDvOwner || busy} onClick={() => writeContract({ ...dp, functionName: "setStakingContract", args: [stakingPoolAddress!] })}>
+                Link dividend pool → staking
+              </button>
+            ) : null}
+            <button className="btn btn-k btn-sm" disabled={!isOwner || busy} onClick={() => writeContract({ ...sp, functionName: "setAutoPull", args: [!autoPull] })}>
+              Turn auto-pull {autoPull ? "off" : "on"}
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2">
             <div className="field !py-1.5 min-w-[220px] flex-1">
               <input value={surplusAmt} onChange={(e) => setSurplusAmt(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="Amount to recover" />
@@ -479,7 +485,7 @@ export function AdminPage() {
           <p className="text-[0.74rem] text-[var(--t3)]">
             Careful: surplus also holds rewards stakers can still claim. Withdrawing those makes their claims fail until refunded.
           </p>
-        </div>
+        </details>
 
         {hash ? (
           <div className="tile !gap-1">

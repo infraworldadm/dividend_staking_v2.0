@@ -6,6 +6,11 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+/// @dev DividendPoolNativeV2 (upgraded) sends its whole balance to the staking contract.
+interface IDividendPoolPull {
+    function pullForStaking() external returns (uint256);
+}
+
 /**
  * @title  InfraStakingPool
  * @notice Monthly reward pool for native reAED stakers on the INFRA network.
@@ -13,9 +18,11 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  * ────────────────────────────────────────────────────────────────────────────
  *  OVERVIEW
  * ────────────────────────────────────────────────────────────────────────────
- *  Money flow:
- *    Network fees ──► DividendPoolNativeV2 ──(owner: sendRewardsToStaking)──►
- *    InfraStakingPool.fundRewardsFromDividendPool() ──► split by weight ──► stakers
+ *  Money flow (FULLY AUTOMATIC — no admin signature needed):
+ *    Network fees ──► DividendPoolNativeV2 (collects during month M)
+ *    first transaction after month M closes (any stake/claim/withdraw, or poke() by the
+ *    keeper) ──► pulls the whole dividend-pool balance as month M's reward pool
+ *    ──► split by weight ──► stakers claim within 30 days ──► leftovers auto-swept to admin
  *
  *  Cycles ("epochs")
  *    - One epoch = one calendar month in UTC.
@@ -37,19 +44,18 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  *
  *  Rewards (no APR is promised)
  *    - Rewards come ONLY from the dividend pool (DividendPoolNativeV2) or the owner.
- *      The admin sends the dividend pool balance here at month end
- *      (sendRewardsToStaking) — e.g. 1,000 reAED — and that amount is split among
- *      that month's positions by weight.
- *    - Every reAED received during month M is month M's reward pool, so send it
- *      BEFORE 00:00 UTC on the 1st (e.g. last day, 23:00 UTC).
+ *    - AUTO-PULL: the first state-changing call in a new month asks the dividend pool
+ *      (pullForStaking) for its whole balance and books it as the month that just closed.
+ *      Nobody has to send anything by hand. poke() lets a keeper trigger it daily.
+ *    - Manual top-ups still work: sendRewardsToStaking / fundEpoch add to the RUNNING month.
  *    - Weight = position amount × month length (positions always earn whole months).
  *    - Reward of a position for month M = M's pool × position weight ÷ total weight of M.
  *
  *  Claiming
  *    - When month M closes, its rewards are claimable for CLAIM_WINDOW (30 days).
  *      claim() collects rewards from ALL of the wallet's positions at once.
- *    - After the window, unclaimed rewards expire. Anyone may call sweepExpired(M)
- *      to send them to the ADMIN WALLET (not to the next month).
+ *    - After the window, unclaimed rewards expire and are AUTO-SWEPT to the ADMIN WALLET
+ *      by the next transaction (or poke()); sweepExpired(M) does it by hand.
  *    - A month nobody staked in can be swept to the admin wallet as soon as it closes.
  *
  *  Owner (MUST be a multisig, e.g. Gnosis Safe)
@@ -182,6 +188,14 @@ contract InfraStakingPool is
     uint256 public stakerCount;
     /// @notice slot 28 — open positions across all wallets.
     uint256 public openPositions;
+    /// @notice slot 29 — latest month in which the dividend pool was auto-pulled.
+    uint256 public lastPulledEpoch;
+    /// @notice slot 30 — oldest month the auto-sweeper still has to look at.
+    uint256 public nextSweepEpoch;
+    /// @notice slot 31 — auto-pull on/off (owner). Requires DividendPoolNativeV2.pullForStaking().
+    bool public autoPullEnabled;
+    /// @dev slot 31 (packed) — true only while pullForStaking() is sending to receive().
+    bool private _pulling;
 
     // ════════════════════════════════════════════════════════════════════
     //  EVENTS
@@ -211,6 +225,9 @@ contract InfraStakingPool is
     event OwnerRewardsWithdrawn(address indexed to, uint256 amount);
     /// @notice Owner withdrew funds through the emergency path (may include principal).
     event EmergencyWithdraw(address indexed to, uint256 amount);
+    /// @notice Auto-pull ran for `epoch` (the month that just closed); `amount` may be 0.
+    event AutoPulled(uint256 indexed epoch, uint256 amount, bool ok);
+    event AutoPullSet(bool enabled);
 
     // ════════════════════════════════════════════════════════════════════
     //  SETUP / UPGRADES
@@ -237,6 +254,7 @@ contract InfraStakingPool is
         adminWallet = adminWallet_;
         lastSyncedEpoch = currentEpoch();
         _setDefaultPeriods();
+        _initAutomation();
         emit DividendPoolUpdated(address(0), dividendPool_);
         emit AdminWalletUpdated(address(0), adminWallet_);
     }
@@ -267,6 +285,16 @@ contract InfraStakingPool is
         adminWallet = adminWallet_;
         lastSyncedEpoch = currentEpoch();
         _setDefaultPeriods();
+        _initAutomation();
+    }
+
+    /// @dev Fees collected from now on belong to the running month; sweeper starts here.
+    function _initAutomation() internal {
+        uint256 cur = currentEpoch();
+        lastPulledEpoch = cur;
+        nextSweepEpoch = cur;
+        autoPullEnabled = true;
+        emit AutoPullSet(true);
     }
 
     /// @dev Lock options offered on the website: 1, 2, 6, 8, 9 and 12 months.
@@ -293,10 +321,28 @@ contract InfraStakingPool is
         _fund(currentEpoch());
     }
 
-    /// @notice Plain transfers from the dividend pool (sendRewardsToStakingPlain) also fund
-    ///         the current month. Transfers from any other address are rejected.
+    /// @notice Plain transfers from the dividend pool fund the current month — except during
+    ///         an auto-pull, when they are the CLOSED month's pool. Others are rejected.
     receive() external payable {
+        if (_pulling && msg.sender == dividendPool) return; // booked by _autoPull()
         _fund(currentEpoch());
+    }
+
+    /**
+     * @notice Runs the monthly automation: records month weights, pulls the dividend pool
+     *         for the month that just closed, and sweeps expired months to the admin wallet.
+     *         Anyone may call it (a daily keeper/cron does). It moves no funds anywhere else.
+     */
+    function poke() external nonReentrant {
+        _sync();
+    }
+
+    /// @notice True if poke() would do something right now (for keepers).
+    function needsPoke() external view returns (bool) {
+        uint256 cur = currentEpoch();
+        if (lastSyncedEpoch < cur) return true;
+        if (autoPullEnabled && lastPulledEpoch < cur) return true;
+        return _sweepDue(nextSweepEpoch, cur);
     }
 
     /// @notice Owner can add rewards to the current or a FUTURE month explicitly.
@@ -409,21 +455,20 @@ contract InfraStakingPool is
     function sweepExpired(uint256 epoch) external nonReentrant {
         _sync();
         require(epoch < currentEpoch(), "Epoch not closed");
-        require(!epochSwept[epoch], "Already swept");
+        if (epochSwept[epoch]) return; // already done (possibly by the auto-sweeper)
         require(block.timestamp >= claimDeadline(epoch) || totalWeight(epoch) == 0, "Claim window open");
-
-        epochSwept[epoch] = true;
-        uint256 left = epochReward[epoch] - epochClaimed[epoch];
-        if (left > 0) {
-            totalExpiredSwept += left;
-            _send(adminWallet, left);
-            emit ExpiredRewardsSwept(epoch, adminWallet, left);
-        }
+        require(_sweep(epoch), "Transfer failed");
     }
 
     // ════════════════════════════════════════════════════════════════════
     //  OWNER / ADMIN
     // ════════════════════════════════════════════════════════════════════
+
+    /// @notice Turn auto-pull from the dividend pool on/off (on by default).
+    function setAutoPull(bool enabled) external onlyOwner {
+        autoPullEnabled = enabled;
+        emit AutoPullSet(enabled);
+    }
 
     /// @notice Change the dividend pool address (the only non-owner reward source).
     function setDividendPool(address newPool) external onlyOwner {
@@ -543,7 +588,7 @@ contract InfraStakingPool is
         uint256 tw = totalWeight(epoch);
         if (tw == 0) return 0;
         Position[] storage ps = _positions[user];
-        for (uint256 i = 0; i < ps.length; i++) r += (epochReward[epoch] * _positionWeight(ps[i], epoch)) / tw;
+        for (uint256 i = 0; i < ps.length; i++) r += (rewardOf(epoch) * _positionWeight(ps[i], epoch)) / tw;
     }
 
     /**
@@ -580,7 +625,7 @@ contract InfraStakingPool is
         epoch = currentEpoch();
         weight = userWeight(user, epoch);
         total = totalWeight(epoch);
-        rewardSoFar = epochReward[epoch];
+        rewardSoFar = rewardOf(epoch);
     }
 
     /// @notice Everything about one month, for the cycle history table.
@@ -593,11 +638,25 @@ contract InfraStakingPool is
             epochStart(epoch),
             epochEnd(epoch),
             claimDeadline(epoch),
-            epochReward[epoch],
+            rewardOf(epoch),
             totalWeight(epoch),
             epochClaimed[epoch],
             epochSwept[epoch]
         );
+    }
+
+    /// @notice Reward of a month INCLUDING the dividend-pool balance that the next
+    ///         transaction will auto-pull into it (closed month) — what the UI should show.
+    function rewardOf(uint256 epoch) public view returns (uint256) {
+        return epochReward[epoch] + _unpulledFor(epoch);
+    }
+
+    function _unpulledFor(uint256 epoch) internal view returns (uint256) {
+        if (!autoPullEnabled) return 0;
+        uint256 cur = currentEpoch();
+        // pool balance belongs to cur-1 until pulled, otherwise it is the running month's so far
+        if (lastPulledEpoch < cur ? epoch == cur - 1 : epoch == cur) return dividendPool.balance;
+        return 0;
     }
 
     /// @notice Contract balance NOT owed as principal (= reward funds, claimed or not).
@@ -611,7 +670,7 @@ contract InfraStakingPool is
     // ════════════════════════════════════════════════════════════════════
 
     /// @dev Writes base weight of every month reached since the last sync.
-    function _sync() internal {
+    function _syncWeights() internal {
         uint256 cur = currentEpoch();
         uint256 e = lastSyncedEpoch;
         if (cur <= e) return;
@@ -622,6 +681,70 @@ contract InfraStakingPool is
         }
         activeAmount = active;
         lastSyncedEpoch = cur;
+    }
+
+    /// @dev _sync + monthly automation (auto-pull and auto-sweep). Used by every entry point.
+    function _sync() internal {
+        _syncWeights();
+        uint256 cur = currentEpoch();
+        if (autoPullEnabled && lastPulledEpoch < cur) _autoPull(cur);
+        _autoSweep(cur);
+    }
+
+    /// @dev Pulls the dividend pool's whole balance as the reward of month cur-1.
+    ///      Never reverts: if the pool can't pay, the month is retried on the next call.
+    function _autoPull(uint256 cur) internal {
+        uint256 epoch = cur - 1;
+        uint256 before = address(this).balance;
+        _pulling = true;
+        (bool ok, ) = dividendPool.call(abi.encodeCall(IDividendPoolPull.pullForStaking, ()));
+        _pulling = false;
+        uint256 got = address(this).balance - before;
+        if (!ok) {
+            emit AutoPulled(epoch, 0, false);
+            return; // retry next call
+        }
+        lastPulledEpoch = cur;
+        if (got > 0) {
+            epochReward[epoch] += got;
+            totalRewardsReceived += got;
+            emit RewardsFunded(dividendPool, epoch, got);
+        }
+        emit AutoPulled(epoch, got, true);
+    }
+
+    /// @dev Sweeps at most 2 due months per call (bounded gas), oldest first.
+    function _autoSweep(uint256 cur) internal {
+        uint256 e = nextSweepEpoch;
+        for (uint256 i = 0; i < 2 && e < cur; i++) {
+            if (!epochSwept[e]) {
+                if (!_sweepDue(e, cur)) break;
+                if (!_sweep(e)) break; // admin wallet refused: retry later, never block users
+            }
+            e++;
+        }
+        nextSweepEpoch = e;
+    }
+
+    function _sweepDue(uint256 e, uint256 cur) internal view returns (bool) {
+        if (e >= cur || epochSwept[e]) return e < cur;
+        if (autoPullEnabled && e == cur - 1 && lastPulledEpoch < cur) return false; // not pulled yet
+        return block.timestamp >= claimDeadline(e) || totalWeight(e) == 0;
+    }
+
+    /// @dev Marks `epoch` swept and sends what's left to the admin wallet. False if refused.
+    function _sweep(uint256 epoch) internal returns (bool) {
+        uint256 left = epochReward[epoch] - epochClaimed[epoch];
+        epochSwept[epoch] = true;
+        if (left == 0) return true;
+        (bool ok, ) = payable(adminWallet).call{value: left, gas: 60_000}("");
+        if (!ok) {
+            epochSwept[epoch] = false;
+            return false;
+        }
+        totalExpiredSwept += left;
+        emit ExpiredRewardsSwept(epoch, adminWallet, left);
+        return true;
     }
 
     /// @dev Weight of one position in one month (whole months only).
@@ -646,7 +769,7 @@ contract InfraStakingPool is
         for (uint256 e = from; e <= to; e++) {
             uint256 tw = totalWeight(e);
             if (tw == 0) continue;
-            uint256 r = (epochReward[e] * _positionWeight(p, e)) / tw;
+            uint256 r = (rewardOf(e) * _positionWeight(p, e)) / tw;
             if (r > 0 && block.timestamp < claimDeadline(e) && !epochSwept[e]) {
                 amount += r;
                 if (nextDeadline == 0) nextDeadline = claimDeadline(e);
@@ -776,6 +899,6 @@ contract InfraStakingPool is
         if (m <= 2) y += 1;
     }
 
-    /// @dev Reserved storage slots for future upgrades (slots 29–49; previous __gap ended at 49).
-    uint256[21] private __gap;
+    /// @dev Reserved storage slots for future upgrades (slots 32–49; previous __gap ended at 49).
+    uint256[18] private __gap;
 }

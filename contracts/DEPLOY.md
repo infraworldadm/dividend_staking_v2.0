@@ -48,6 +48,18 @@ cast send 0xCD938d217a31C85B9041a218A14015E289D61aC0 "setStakingContract(address
   0xeEb712B20b9d4AEF535a781e1222FD1174fFa919 --rpc-url https://uat.infraworld.org/ --private-key $OWNER_KEY
 ```
 
+### 4) Upgrade the DIVIDEND POOL too (enables automatic monthly payouts)
+
+The new `DividendPoolNativeV2` adds one function, `pullForStaking()`, which can send its balance
+**only** to the linked staking contract. No new storage — a safe in-place upgrade.
+
+```bash
+forge create src/DividendPoolNativeV2.sol:DividendPoolNativeV2 --rpc-url https://uat.infraworld.org/ --private-key $OWNER_KEY --broadcast
+# → NEW_DIV_IMPL
+cast send 0xCD938d217a31C85B9041a218A14015E289D61aC0 "upgradeToAndCall(address,bytes)" $NEW_DIV_IMPL 0x \
+  --rpc-url https://uat.infraworld.org/ --private-key $OWNER_KEY
+```
+
 If the RPC rejects EIP-1559 transactions, add `--legacy` to the `forge script` / `cast send` commands.
 
 ## Option B — Remix + wallet (no CLI)
@@ -90,13 +102,17 @@ Vercel → project `dividend-staking-v2-0` → Settings → Environment Variable
 (Set this only **after** the upgrade — the site calls the new contract's functions.)
 Also set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (cloud.reown.com) for mobile/QR wallets.
 
-## Monthly admin routine
+## Monthly routine — automatic (nobody signs anything)
 
-1. Last day of the month, before 23:59 UTC: on the dividend pool call
-   `sendRewardsToStaking(<amount>)` → credited to the running month.
-2. After a month's 30-day claim window: on the staking proxy call `sweepExpired(<epochId>)`
-   → unclaimed rewards go to the admin wallet. (epochId = year*12 + month-1, e.g. Nov 2026 = 24322)
-3. Optional clean-up: `releaseStakes([...])` returns principal of stakes past lock + 30 days.
+- Network fees collect in the dividend pool during month M.
+- The first transaction after M closes (any user stake/claim/withdraw, or the daily keeper)
+  pulls the whole dividend-pool balance into month M's reward pool.
+- Stakers claim within 30 days; afterwards the rest is auto-swept to the admin wallet.
+- Keeper: Vercel Cron calls `/api/cron/keeper` daily at 00:05 UTC (`vercel.json`). It needs
+  `CRON_SECRET` and `KEEPER_PRIVATE_KEY` = a NEW wallet with only a little reAED for gas.
+  It has no special rights — `poke()` is public and can only pay stakers / the admin wallet.
+- Manual fallback (rare): anyone can call `poke()` on the staking proxy.
+- Manual top-ups still work: `sendRewardsToStaking(amount)` adds to the running month.
 
 ## Before mainnet
 

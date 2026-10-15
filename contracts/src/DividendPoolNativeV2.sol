@@ -123,6 +123,22 @@ contract DividendPoolNativeV2 is
     }
 
     // ------------------------------------------------------------------
+    // AUTOMATIC: the staking contract pulls the whole balance once a month
+    // (first transaction after month end). No owner signature needed.
+    // Funds can ONLY go to `stakingContract`.
+    // ------------------------------------------------------------------
+
+    function pullForStaking() external nonReentrant returns (uint256 amount) {
+        require(msg.sender == stakingContract, "only staking");
+        amount = address(this).balance;
+        if (amount == 0) return 0;
+        totalRewardsSentToStaking += amount;
+        (bool sent, ) = payable(stakingContract).call{value: amount}("");
+        require(sent, "staking transfer failed");
+        emit RewardSentToStaking(stakingContract, amount);
+    }
+
+    // ------------------------------------------------------------------
     // Emergency withdrawal
     // ------------------------------------------------------------------
 

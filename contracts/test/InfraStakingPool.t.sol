@@ -239,8 +239,73 @@ contract InfraStakingPoolTest is Test {
         pool.sweepExpired(E_NOV);
         assertEq(adminWallet.balance, 100 ether);
         assertEq(pool.epochReward(E_DEC), 0); // not forwarded
-        vm.expectRevert("Already swept");
-        pool.sweepExpired(E_NOV);
+        pool.sweepExpired(E_NOV); // second call is a harmless no-op
+        assertEq(adminWallet.balance, 100 ether);
+    }
+
+    // ── Automation: no admin action at all ──
+
+    /// Fees just sit in the dividend pool; the first tx of December books them as November's pool.
+    function test_autoPullAndAutoSweep_noAdmin() public {
+        vm.prank(alice);
+        pool.stake{value: 30 ether}(1);
+        vm.prank(bob);
+        pool.stake{value: 10 ether}(1);
+
+        vm.warp(NOV_1 + 1);
+        pool.poke(); // daily keeper: closes October's books
+        vm.warp(NOV_1 + 5 days);
+        vm.prank(feePayer);
+        (bool ok, ) = address(dividend).call{value: 80 ether}("");
+        assertTrue(ok);
+        // running month shows the pool balance as "so far"
+        (, , , uint256 soFar) = pool.currentEpochShare(alice);
+        assertEq(soFar, 80 ether);
+        assertFalse(pool.needsPoke());
+
+        vm.warp(DEC_1 + 1);
+        assertTrue(pool.needsPoke());
+        // claimable is visible BEFORE anyone pulls
+        assertEq(_pending(alice), 60 ether);
+        assertEq(_pending(bob), 20 ether);
+
+        uint256 a0 = alice.balance;
+        vm.prank(alice);
+        pool.claim(); // first tx of December pulls the pool automatically
+        assertEq(alice.balance - a0, 60 ether);
+        assertEq(address(dividend).balance, 0);
+        assertEq(pool.epochReward(E_NOV), 80 ether);
+        assertEq(pool.lastPulledEpoch(), E_DEC);
+
+        // Bob never claims → after the window, the keeper's poke sweeps it to admin
+        vm.warp(DEC_1 + 30 days);
+        assertTrue(pool.needsPoke());
+        pool.poke();
+        assertEq(adminWallet.balance, 20 ether);
+        assertTrue(pool.epochSwept(E_NOV));
+        assertFalse(pool.needsPoke());
+    }
+
+    /// A broken/refusing admin wallet or dividend pool can never block stakers.
+    function test_automationNeverBlocksUsers() public {
+        RevertingReceiver bad = new RevertingReceiver();
+        vm.prank(owner);
+        pool.setAdminWallet(address(bad));
+        vm.prank(alice);
+        pool.stake{value: 10 ether}(1);
+        vm.warp(NOV_1 + 1);
+        pool.poke();
+        vm.prank(feePayer);
+        (bool ok, ) = address(dividend).call{value: 5 ether}("");
+        assertTrue(ok);
+        vm.warp(DEC_1 + 30 days + 1 hours); // Nov window over; sweep to admin will fail
+        vm.prank(alice);
+        pool.withdraw(0); // still works — principal only
+        assertFalse(pool.epochSwept(E_NOV));
+        vm.prank(owner);
+        pool.setAdminWallet(adminWallet);
+        pool.poke();
+        assertEq(adminWallet.balance, 5 ether);
     }
 
     function test_withdrawOnePositionWithRewardsInGrace() public {
@@ -460,5 +525,11 @@ contract InfraStakingPoolTest is Test {
         pool.releaseStakes(list);
         assertEq(pool.totalStaked(), 0);
         assertGe(address(pool).balance, 0);
+    }
+}
+
+contract RevertingReceiver {
+    receive() external payable {
+        revert("no");
     }
 }
