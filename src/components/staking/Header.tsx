@@ -10,7 +10,7 @@ function shortAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
-export function Header() {
+export function Header({ onTour }: { onTour?: () => void }) {
   const { address, isConnected } = useAccount();
   const { data: balance } = useBalance({
     address,
@@ -29,6 +29,11 @@ export function Header() {
         </a>
 
         <nav className="ml-auto hidden items-center gap-6 text-[0.88rem] text-[var(--t2)] md:flex">
+          {onTour ? (
+            <button onClick={onTour} className="transition-colors hover:text-[var(--t1)]">
+              How it works
+            </button>
+          ) : null}
           <a href="https://infraworld.org" className="transition-colors hover:text-[var(--t1)]">Website</a>
           {explorer ? (
             <a href={explorer} target="_blank" rel="noreferrer" className="transition-colors hover:text-[var(--t1)]">

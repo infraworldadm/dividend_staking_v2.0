@@ -31,7 +31,7 @@ export function CycleTimeline() {
   const history = cycleHistory(now);
 
   return (
-    <section className="mt-3 grid gap-3">
+    <section className="mt-3 grid gap-3" data-tour="cycles">
       <div className="grid gap-3 md:grid-cols-3">
         <div className="tile">
           <div className="flex items-center justify-between">

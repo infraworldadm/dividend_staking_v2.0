@@ -9,6 +9,7 @@ import { StakePanel } from "@/components/staking/StakePanel";
 import { RewardsPanel } from "@/components/staking/RewardsPanel";
 import { HowItWorksCard } from "@/components/staking/HowItWorksCard";
 import { CycleTimeline } from "@/components/staking/CycleTimeline";
+import { Tour, type TourStep } from "@/components/staking/Tour";
 import { cyclesAround, fmtDate } from "@/lib/cycles";
 import { EmptyPanel, GuideBanner, GuideTabs, PositionPanel, type GuideState, type GuideTab } from "@/components/staking/StakeGuide";
 import { SuccessOverlay, type SuccessKind, type SuccessState } from "@/components/staking/SuccessOverlay";
@@ -42,6 +43,7 @@ export function StakingPage() {
   const [tab, setTabState] = useState<GuideTab>("stake");
   const tabTouched = useRef(false);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const [tourSignal, setTourSignal] = useState(0);
 
   const { isConnected, address, poolInfo, userInfo, refetch } = useDividendPoolReads();
   const { data: wallet } = useBalance({ address });
@@ -228,9 +230,136 @@ export function StakingPage() {
     lockMode: true,
   });
 
+  const tourSteps: TourStep[] = [
+    {
+      title: "Welcome to the INFRA Dividend Pool",
+      body: (
+        <>
+          <p>
+            You stake <b>reAED</b> and earn a share of <b>real INFRA network fees</b>. There is no inflation, no new
+            tokens, and <b>no fixed APR</b> — what you earn depends on how much the network makes and your weight in
+            the pool.
+          </p>
+          <div className="tour-flow">
+            <span>Stake<small>this month</small></span>
+            <span>Earn<small>{nextCycle.label.split(" ")[0]} cycle</small></span>
+            <span>Cycle closes<small>month end</small></span>
+            <span>Claim<small>within 30 days</small></span>
+          </div>
+        </>
+      ),
+    },
+    {
+      target: '[data-tour="pool"]',
+      title: "Where rewards come from",
+      body: (
+        <p>
+          <b>Pool balance</b> is all reAED staked. The <b>reward vault</b> fills with network fees; that is the only
+          source of rewards. Figures refresh every 10 seconds, live from the contract.
+        </p>
+      ),
+    },
+    {
+      target: '[data-tour="stats"]',
+      title: "Your numbers at a glance",
+      body: (
+        <p>
+          Your <b>wallet balance</b>, the pool’s <b>total staked</b>, <b>your stake</b>, and when the <b>current
+          monthly cycle ends</b>.
+        </p>
+      ),
+    },
+    {
+      target: '[data-tour="guide"]',
+      title: "This banner tells you what to do",
+      body: (
+        <p>
+          Every time you come back, start here. It changes with your position: <b>stake for next month</b>, <b>you’re
+          earning</b>, or <b>rewards ready — claim before the deadline</b>.
+        </p>
+      ),
+    },
+    {
+      target: '[data-tour="panel"]',
+      before: () => setTab("stake"),
+      title: `Stake for ${nextCycle.label}`,
+      body: (
+        <>
+          <p>
+            Enter an amount, pick a <b>lock period</b> (30-day steps), accept the terms and confirm in your wallet.
+          </p>
+          <p>
+            A stake made now <b>joins the next cycle</b> and starts earning on <b>{fmtDate(nextCycle.start)}</b>. One
+            active stake per wallet.
+          </p>
+        </>
+      ),
+    },
+    {
+      title: "How your share is calculated",
+      body: (
+        <>
+          <p>
+            <b>Weight = amount × time staked.</b> Your share of a cycle is your weight divided by everyone’s weight.
+            Stake more, or stay longer, and your share grows.
+          </p>
+          <div className="tour-eg">
+            <div><span>Fees distributed in a cycle (example)</span><span>10,000 reAED</span></div>
+            <div><span>Your weight ÷ total weight</span><span>5%</span></div>
+            <div className="t"><span>Your reward</span><span>500 reAED</span></div>
+          </div>
+          <p className="text-[0.76rem]">Illustration only — actual rewards depend on real network fees.</p>
+        </>
+      ),
+    },
+    {
+      target: '[data-tour="panel"]',
+      before: () => setTab("earning"),
+      title: "Earning now",
+      body: (
+        <p>
+          Once staked, this tab shows your position in the <b>{curCycle.label}</b> cycle: amount, share of pool weight,
+          lock countdown and total claimed. After the lock ends you can <b>unstake</b> your full principal here.
+        </p>
+      ),
+    },
+    {
+      target: '[data-tour="panel"]',
+      before: () => setTab("claim"),
+      title: "Claim after the month closes",
+      body: (
+        <p>
+          When a cycle ends, your rewards appear here. You have <b>30 days to claim</b> — after that they expire. The
+          banner and a blue dot on this tab remind you.
+        </p>
+      ),
+    },
+    {
+      target: '[data-tour="cycles"]',
+      title: "Cycle calendar",
+      body: (
+        <p>
+          <b>Previous</b> month: claim window. <b>Current</b> month: earning. <b>Next</b> month: open for new stakes.
+          The history below lists every cycle with its claim deadline.
+        </p>
+      ),
+    },
+    {
+      target: '[data-tour="where"]',
+      title: "Next time you log in",
+      body: (
+        <p>
+          Check the banner, or use these shortcuts: <b>Earning now</b> if you’ve staked, <b>Claim</b> after a cycle
+          closes, <b>Stake</b> for the next month. You can replay this tour from <b>How it works</b> in the header.
+        </p>
+      ),
+    },
+  ];
+
   return (
     <>
-      <Header />
+      <Header onTour={() => setTourSignal((n) => n + 1)} />
+      <Tour steps={tourSteps} openSignal={tourSignal} />
       <main className="wrap pb-12 pt-6 sm:pt-8">
         <section className="mb-3 grid gap-4 lg:grid-cols-[1.3fr_1fr] lg:items-end">
           <div className="grid gap-3">
@@ -245,9 +374,15 @@ export function StakingPage() {
               No inflation. No emissions. Rewards are paid from real INFRA network fees, shared by weight across
               monthly cycles.
             </p>
+            <button
+              onClick={() => setTourSignal((n) => n + 1)}
+              className="justify-self-start text-[0.85rem] font-medium text-[var(--blue)] hover:underline"
+            >
+              New here? Take the 1-minute tour →
+            </button>
           </div>
 
-          <div className="tile dark">
+          <div className="tile dark" data-tour="pool">
             <div className="flex items-center justify-between">
               <span className="live">
                 <i /> Pool balance
@@ -268,9 +403,11 @@ export function StakingPage() {
           </div>
         </section>
 
-        <StatsCards cards={stats} />
+        <div data-tour="stats">
+          <StatsCards cards={stats} />
+        </div>
 
-        <div className="mt-3">
+        <div className="mt-3" data-tour="guide">
           <GuideBanner state={guide} symbol={symbol} go={goTab} />
         </div>
 
@@ -283,6 +420,7 @@ export function StakingPage() {
               dots={{ claim: canClaim, earning: hasStake }}
             />
 
+            <div className="grid content-start gap-3" data-tour="panel">
             {activeTab === "earning" ? (
               hasStake ? (
                 <>
@@ -349,10 +487,11 @@ export function StakingPage() {
                 <StakePanel {...panelProps("stake")} title={`Stake for ${nextCycle.label} rewards`} />
               )
             ) : null}
+            </div>
           </div>
 
           <div className="grid content-start gap-3">
-            <div className="tile">
+            <div className="tile" data-tour="where">
               <span className="lbl"><i /> Where to go</span>
               <button className="row w-full text-left" onClick={() => goTab("earning")}>
                 <span>Already staked?</span><span className="font-medium text-[var(--blue)]">Earning now →</span>

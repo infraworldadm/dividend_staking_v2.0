@@ -181,3 +181,24 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.035em; line-height: 1.02; text
 .tabs button[aria-selected="true"] { background: var(--black); color: #fff }
 .tabs button i { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); animation: pl 1.8s infinite }
 @media (max-width: 480px) { .tabs button { font-size: 0.78rem } }
+
+/* guided tour */
+.tour { position: fixed; inset: 0; z-index: 90 }
+.tour-dim { position: absolute; inset: 0; background: rgba(10, 11, 14, 0.55); animation: fadeIn 0.3s var(--ease) }
+.tour-spot { position: fixed; border-radius: 16px; box-shadow: 0 0 0 9999px rgba(10, 11, 14, 0.55), 0 0 0 2px var(--blue); transition: all 0.45s var(--ease); pointer-events: none }
+.tour-card { position: fixed; background: var(--white); border-radius: 16px; padding: 16px 18px; display: grid; gap: 10px; box-shadow: 0 24px 70px rgba(10, 11, 14, 0.35); animation: pop 0.4s var(--ease) }
+.tour-body { font-size: 0.86rem; color: var(--t2); display: grid; gap: 8px; line-height: 1.55 }
+.tour-body b { color: var(--t1); font-weight: 500 }
+.tour-x { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--t3) }
+.tour-x:hover { background: var(--field); color: var(--t1) }
+.tour-dots { display: flex; gap: 4px }
+.tour-dots i { height: 3px; flex: 1; border-radius: 3px; background: var(--line-2); transition: background 0.3s }
+.tour-dots i.done { background: var(--blue-l) }
+.tour-dots i.on { background: var(--blue) }
+.tour-eg { display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--field); font-size: 0.8rem }
+.tour-eg div { display: flex; justify-content: space-between; gap: 10px }
+.tour-eg .t { border-top: 1px solid var(--line-2); padding-top: 4px; margin-top: 2px; color: var(--blue); font-weight: 500 }
+.tour-flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; font-size: 0.72rem }
+.tour-flow span { padding: 8px 4px; border-radius: 8px; background: var(--field); color: var(--t1); font-weight: 500; line-height: 1.25 }
+.tour-flow span small { display: block; font-weight: 400; color: var(--t3); font-size: 0.66rem }
+@media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card, .tour-dim { transition: none; animation: none } }
