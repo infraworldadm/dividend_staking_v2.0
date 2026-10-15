@@ -98,7 +98,7 @@ export function CycleTimeline({ poolNow, symbol }: { poolNow: string; symbol: st
                 <th>Ended</th>
                 <th>Claim until</th>
                 <th>Reward pool</th>
-                <th>Your reward</th>
+                <th title="Rewards of your open positions. Withdrawn positions appear in your activity list.">Your reward (open stakes)</th>
                 <th>Status</th>
               </tr>
             </thead>

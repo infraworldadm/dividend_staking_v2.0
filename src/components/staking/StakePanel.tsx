@@ -58,6 +58,8 @@ export function StakePanel({
   const last = cycleAt(ny, nm - 1 + periods - 1);
   const lockEnd = cycleAt(ny, nm - 1 + periods);
   const graceEnd = lockEnd.start + CLAIM_BUFFER_DAYS * 86400;
+  const secondsLeft = next.start - Math.floor(Date.now() / 1000);
+  const after = cycleAt(ny, nm); // the month after next
 
   return (
     <div className="tile !gap-3.5">
@@ -144,6 +146,13 @@ export function StakePanel({
           {CLAIM_BUFFER_DAYS} days are forfeited.
         </span>
       </label>
+
+      {secondsLeft < 3600 ? (
+        <p className="note !bg-[#fff4e5] !text-[#b45309]">
+          Less than an hour left in this window. If your transaction confirms after 00:00 UTC it will join{" "}
+          {after.label} instead of {next.label}.
+        </p>
+      ) : null}
 
       <button onClick={onStake} disabled={Boolean(disabledReason) || busy} className="btn btn-b w-full">
         {busy ? "Processing…" : `Stake ${symbol}`}

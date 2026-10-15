@@ -12,6 +12,8 @@ import { CycleTimeline } from "@/components/staking/CycleTimeline";
 import { Tour, type TourStep } from "@/components/staking/Tour";
 import { Num } from "@/components/motion/Num";
 import { StakeWindow, WhyStake } from "@/components/staking/StakeWindow";
+import { ActivityList } from "@/components/staking/ActivityList";
+import { useActivity } from "@/hooks/useActivity";
 import { CLAIM_BUFFER_DAYS, cycleOfEpoch, cyclesAround, fmtDate } from "@/lib/cycles";
 import {
   EmptyPanel,
@@ -67,6 +69,8 @@ export function StakingPage() {
   const s = useStakingPool();
   const { data: wallet } = useBalance({ address: s.address });
   const w = useStakingWrites();
+  const [activityKey, setActivityKey] = useState(0);
+  const activity = useActivity(s.address, activityKey);
 
   useEffect(() => {
     setCycleEndTarget(cyclesAround(Math.floor(Date.now() / 1000)).current.end);
@@ -83,6 +87,7 @@ export function StakingPage() {
         pending.current = null;
       }
       s.refetch();
+      setActivityKey((k) => k + 1);
       w.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,7 +149,13 @@ export function StakingPage() {
   const busy = w.isSigning || (w.hasActiveTx && w.isConfirming);
 
   const walletBalance = wallet?.value ? formatToken(wallet.value, 4) : "0.0000";
-  const walletBalanceRaw = useMemo(() => (wallet?.value ? formatEther(wallet.value) : "0"), [wallet?.value]);
+  // "Max" keeps 0.01 reAED for gas so the stake transaction can be paid for
+  const GAS_BUFFER = 10n ** 16n;
+  const walletBalanceRaw = useMemo(
+    () => (wallet?.value && wallet.value > GAS_BUFFER ? formatEther(wallet.value - GAS_BUFFER) : "0"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [wallet?.value],
+  );
 
   const stakeDisabledReason = useMemo(() => {
     if (!s.configured) return "Staking opens once the contract is live.";
@@ -453,34 +464,39 @@ export function StakingPage() {
 
             <div className="tab-panel grid content-start gap-3" data-tour="panel" key={activeTab}>
               {activeTab === "earning" ? (
-                hasStake ? (
-                  <PositionsPanel
-                    symbol={SYMBOL}
-                    totalStaked={staked}
-                    count={s.positions.length}
-                    cycle={curCycle.label}
-                    progress={cycleProgress}
-                    share={share}
-                    estimate={estimate}
-                    totalClaimed={formatToken(s.account.totalClaimed, 2)}
-                    totalExpired={formatToken(s.account.totalExpired, 2)}
-                    endedCount={endedCount}
-                    positions={views}
-                    onWithdraw={doWithdraw}
-                    onWithdrawAll={doWithdrawAll}
-                    onAdd={() => setTab("stake")}
-                    busy={busy}
-                    error={contractError}
-                  />
-                ) : (
-                  <EmptyPanel
-                    label="My stakes"
-                    title="You don’t have a stake yet"
-                    body={`Stake now to join the ${nextCycle.label} cycle. Earning starts ${fmtDate(nextCycle.start)}.`}
-                    cta={`Stake for ${nextCycle.label}`}
-                    onCta={() => setTab("stake")}
-                  />
-                )
+                <>
+                  {hasStake ? (
+                    <PositionsPanel
+                      symbol={SYMBOL}
+                      totalStaked={staked}
+                      count={s.positions.length}
+                      cycle={curCycle.label}
+                      progress={cycleProgress}
+                      share={share}
+                      estimate={estimate}
+                      totalClaimed={formatToken(s.account.totalClaimed, 2)}
+                      totalExpired={formatToken(s.account.totalExpired, 2)}
+                      endedCount={endedCount}
+                      positions={views}
+                      onWithdraw={doWithdraw}
+                      onWithdrawAll={doWithdrawAll}
+                      onAdd={() => setTab("stake")}
+                      busy={busy}
+                      error={contractError}
+                    />
+                  ) : (
+                    <EmptyPanel
+                      label="My stakes"
+                      title="You don’t have a stake yet"
+                      body={`Stake now to join the ${nextCycle.label} cycle. Earning starts ${fmtDate(nextCycle.start)}.`}
+                      cta={`Stake for ${nextCycle.label}`}
+                      onCta={() => setTab("stake")}
+                    />
+                  )}
+                  {s.isConnected && s.configured ? (
+                    <ActivityList items={activity.items} loading={activity.loading} symbol={SYMBOL} explorer={explorer} />
+                  ) : null}
+                </>
               ) : null}
 
               {activeTab === "claim" ? (
@@ -582,7 +598,10 @@ export function StakingPage() {
         ) : null}
 
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-6 text-[0.8rem] text-[var(--t3)]">
-          <span>© {new Date().getFullYear()} INFRA · Dividend Pool</span>
+          <span>
+            © {new Date().getFullYear()} INFRA · Dividend Pool ·{" "}
+            <a href="/admin" className="hover:text-[var(--blue)]">Admin</a>
+          </span>
           {explorer && shortPool ? (
             <a
               href={`${explorer}/address/${stakingPoolAddress}`}
