@@ -26,15 +26,20 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  *    - It earns ONLY for its `periods` lock months (1..12): months
  *      activeFrom .. activeFrom + periods - 1. One stake per wallet.
  *    - When the lock ends the stake STOPS earning. The staker then has a 30-day
- *      grace period (same as the claim window) to claim and withdraw().
- *    - If the staker has not withdrawn after the grace period, anyone (e.g. an
- *      admin/keeper script) can call releaseStake(user) / releaseStakes(users):
- *      unclaimed rewards are forfeited (they roll into a later month's pool via
- *      rolloverExpired) and the principal is sent back to the staker's own wallet.
+ *      grace period to withdraw() principal TOGETHER WITH the rewards.
+ *    - After the grace period the staker can withdraw the PRINCIPAL ONLY; the
+ *      unclaimed rewards are forfeited and go to the ADMIN WALLET (sweepExpired).
+ *    - Anyone (e.g. an admin/keeper script) may also call releaseStake(user) /
+ *      releaseStakes(users) after the grace period to send the principal back to
+ *      the staker's own wallet.
  *
  *  Rewards (no APR is promised)
- *    - Every reAED that arrives during month M (from the dividend pool or any
- *      plain transfer) becomes month M's reward pool.
+ *    - Rewards come ONLY from the dividend pool (DividendPoolNativeV2) or the owner.
+ *      The admin withdraws the dividend pool to this contract at month end
+ *      (sendRewardsToStaking) — e.g. 1,000 reAED — and that amount is split
+ *      among that month's stakers by weight.
+ *    - Every reAED received during month M becomes month M's reward pool, so
+ *      send it BEFORE 00:00 UTC on the 1st (e.g. last day, 23:00 UTC).
  *    - Weight   = staked amount × seconds the stake was active in that month.
  *    - Share    = user weight ÷ total weight of that month.
  *    - Reward   = month's reward pool × share.
@@ -42,12 +47,12 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  *  Claiming
  *    - When month M closes, its rewards are claimable for CLAIM_WINDOW (30 days).
  *    - After the window, unclaimed rewards expire. Anyone may call
- *      rolloverExpired(M) to move them into the running month's pool.
- *    - A month nobody staked in can be rolled over as soon as it closes.
+ *      sweepExpired(M) to send them to the ADMIN WALLET (not to the next month).
+ *    - A month nobody staked in can be swept to the admin wallet as soon as it closes.
  *
  *  Owner (MUST be a multisig, e.g. Gnosis Safe)
  *    - Upgrade the contract (UUPS).
- *    - setDividendPool(), fundEpoch().
+ *    - setDividendPool(), setAdminWallet(), fundEpoch().
  *    - ownerWithdrawRewards(): reward funds only, never stakers' principal.
  *    - emergencyWithdraw(): ANY amount, including principal.
  *
@@ -92,9 +97,8 @@ contract InfraStakingPool is
     /// @notice Stake record per wallet. Public getter returns the struct fields in order.
     mapping(address => UserInfo) public users;
 
-    /// @notice Address of DividendPoolNativeV2 (the fee collector that funds this pool).
-    /// @dev Informational / for the UI and off-chain tooling. Funding is not restricted
-    ///      to this address: extra rewards from anyone only benefit stakers.
+    /// @notice Address of DividendPoolNativeV2 — the fee collector whose month-end balance
+    ///         is distributed here. Only this address (or the owner) can fund rewards.
     address public dividendPool;
 
     /// @notice Principal currently held for stakers (active + waiting to activate).
@@ -122,8 +126,8 @@ contract InfraStakingPool is
     /// @notice epoch => rewards already paid out from that epoch's pool.
     mapping(uint256 => uint256) public epochClaimed;
 
-    /// @notice epoch => true once its unclaimed rewards were moved to a later epoch.
-    mapping(uint256 => bool) public epochRolledOver;
+    /// @notice epoch => true once its expired/unclaimed rewards were sent to the admin wallet.
+    mapping(uint256 => bool) public epochSwept;
 
     /// @notice Lifetime reAED received as rewards.
     uint256 public totalRewardsReceived;
@@ -133,6 +137,12 @@ contract InfraStakingPool is
 
     /// @notice Lifetime reAED taken by the owner via ownerWithdrawRewards().
     uint256 public totalRewardsWithdrawnByOwner;
+
+    /// @notice Wallet that receives expired (unclaimed after 30 days) rewards.
+    address public adminWallet;
+
+    /// @notice Lifetime expired rewards sent to the admin wallet.
+    uint256 public totalExpiredSwept;
 
     // ════════════════════════════════════════════════════════════════════
     //  EVENTS
@@ -148,8 +158,10 @@ contract InfraStakingPool is
     event RewardsExpiredForUser(address indexed user, uint256 amount);
     /// @notice `amount` reAED was added to `epoch`'s reward pool by `from`.
     event RewardsFunded(address indexed from, uint256 indexed epoch, uint256 amount);
-    /// @notice Unclaimed rewards of `fromEpoch` were moved into `toEpoch`.
-    event RewardsRolledOver(uint256 indexed fromEpoch, uint256 indexed toEpoch, uint256 amount);
+    /// @notice Expired rewards of `epoch` were sent to the admin wallet.
+    event ExpiredRewardsSwept(uint256 indexed epoch, address indexed adminWallet, uint256 amount);
+    /// @notice The admin wallet (receiver of expired rewards) was changed.
+    event AdminWalletUpdated(address indexed oldWallet, address indexed newWallet);
     /// @notice The dividend pool address was changed.
     event DividendPoolUpdated(address indexed oldPool, address indexed newPool);
     /// @notice Owner withdrew reward (non-principal) funds.
@@ -170,16 +182,20 @@ contract InfraStakingPool is
     /**
      * @notice One-time setup, called through the proxy at deployment.
      * @param initialOwner  admin of the pool — use the Gnosis Safe multisig address.
-     * @param dividendPool_ address of DividendPoolNativeV2 (the fee collector).
+     * @param dividendPool_ address of DividendPoolNativeV2 — the ONLY non-owner source of rewards.
+     * @param adminWallet_  wallet that receives expired rewards.
      * @dev Starts month tracking at the deployment month.
      */
-    function initialize(address initialOwner, address dividendPool_) public initializer {
+    function initialize(address initialOwner, address dividendPool_, address adminWallet_) public initializer {
+        require(dividendPool_ != address(0) && adminWallet_ != address(0), "zero address");
         __Ownable_init(initialOwner);
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         dividendPool = dividendPool_;
+        adminWallet = adminWallet_;
         lastSyncedEpoch = currentEpoch();
         emit DividendPoolUpdated(address(0), dividendPool_);
+        emit AdminWalletUpdated(address(0), adminWallet_);
     }
 
     /// @dev Only the owner can upgrade the implementation (UUPS).
@@ -199,7 +215,8 @@ contract InfraStakingPool is
         _fund(currentEpoch());
     }
 
-    /// @notice Plain reAED transfers (e.g. sendRewardsToStakingPlain) also fund the current month.
+    /// @notice Plain reAED transfers from the dividend pool (sendRewardsToStakingPlain) also fund
+    ///         the current month. Transfers from any other address are rejected.
     receive() external payable {
         _fund(currentEpoch());
     }
@@ -213,8 +230,9 @@ contract InfraStakingPool is
         _fund(epoch);
     }
 
-    /// @dev Adds msg.value to `epoch`'s reward pool.
+    /// @dev Adds msg.value to `epoch`'s reward pool. Only the dividend pool or the owner may fund.
     function _fund(uint256 epoch) internal {
+        require(msg.sender == dividendPool || msg.sender == owner(), "Only dividend pool");
         require(msg.value > 0, "No reward");
         epochReward[epoch] += msg.value;
         totalRewardsReceived += msg.value;
@@ -266,8 +284,9 @@ contract InfraStakingPool is
 
     /**
      * @notice Withdraw your FULL principal after the lock has ended.
-     * @dev Also pays rewards of earning months still inside their 30-day claim
-     *      window; rewards whose window has passed are recorded as expired.
+     * @dev Within the 30-day grace period: principal + rewards.
+     *      After it: principal only — expired rewards are recorded and later swept
+     *      to the admin wallet.
      */
     function withdraw() external nonReentrant {
         _release(msg.sender);
@@ -278,7 +297,7 @@ contract InfraStakingPool is
      *         keeper) once the 30-day grace period after the lock has passed — the
      *         staker can always call it (or withdraw()) right after the lock.
      *         Principal always goes to the staker's own wallet; unclaimed rewards
-     *         are forfeited by then.
+     *         are forfeited by then (they go to the admin wallet via sweepExpired).
      */
     function releaseStake(address user) external nonReentrant {
         if (msg.sender != user) require(block.timestamp >= graceEnd(user), "Grace period active");
@@ -332,24 +351,24 @@ contract InfraStakingPool is
     }
 
     /**
-     * @notice Move a closed month's unclaimed rewards into the CURRENT month's pool.
-     *         Callable by anyone (e.g. a keeper / admin script).
-     * @param epoch the closed month to roll over.
-     * @dev Allowed when its claim window has passed, or immediately if that month
-     *      had no stakers (total weight 0). Each month can be rolled over once.
+     * @notice Send a closed month's expired (unclaimed) rewards to the ADMIN WALLET.
+     *         Callable by anyone (admin script / keeper); funds only ever go to adminWallet.
+     * @param epoch the closed month to sweep.
+     * @dev Allowed after its 30-day claim window, or immediately if that month had
+     *      no stakers (total weight 0). Each month can be swept once.
      */
-    function rolloverExpired(uint256 epoch) external {
+    function sweepExpired(uint256 epoch) external nonReentrant {
         _sync();
-        uint256 cur = currentEpoch();
-        require(epoch < cur, "Epoch not closed");
-        require(!epochRolledOver[epoch], "Already rolled");
+        require(epoch < currentEpoch(), "Epoch not closed");
+        require(!epochSwept[epoch], "Already swept");
         require(block.timestamp >= claimDeadline(epoch) || totalWeight(epoch) == 0, "Claim window open");
 
-        epochRolledOver[epoch] = true;
+        epochSwept[epoch] = true;
         uint256 left = epochReward[epoch] - epochClaimed[epoch];
         if (left > 0) {
-            epochReward[cur] += left;
-            emit RewardsRolledOver(epoch, cur, left);
+            totalExpiredSwept += left;
+            _send(adminWallet, left);
+            emit ExpiredRewardsSwept(epoch, adminWallet, left);
         }
     }
 
@@ -357,11 +376,18 @@ contract InfraStakingPool is
     //  OWNER / ADMIN
     // ════════════════════════════════════════════════════════════════════
 
-    /// @notice Update the stored dividend pool address (informational, used by the UI).
+    /// @notice Change the dividend pool address (the only non-owner reward source).
     function setDividendPool(address newPool) external onlyOwner {
         require(newPool != address(0), "pool=0");
         emit DividendPoolUpdated(dividendPool, newPool);
         dividendPool = newPool;
+    }
+
+    /// @notice Change the wallet that receives expired rewards.
+    function setAdminWallet(address newWallet) external onlyOwner {
+        require(newWallet != address(0), "wallet=0");
+        emit AdminWalletUpdated(adminWallet, newWallet);
+        adminWallet = newWallet;
     }
 
     /**
@@ -466,7 +492,7 @@ contract InfraStakingPool is
         (uint256 from, uint256 to) = _settleRange(user);
         for (uint256 e = from; e <= to && to != type(uint256).max; e++) {
             uint256 r = userEpochReward(user, e);
-            if (r > 0 && block.timestamp < claimDeadline(e) && !epochRolledOver[e]) {
+            if (r > 0 && block.timestamp < claimDeadline(e) && !epochSwept[e]) {
                 amount += r;
                 if (nextDeadline == 0) nextDeadline = claimDeadline(e);
             }
@@ -502,7 +528,7 @@ contract InfraStakingPool is
             uint256 reward,
             uint256 weight,
             uint256 claimed,
-            bool rolledOver
+            bool swept
         )
     {
         return (
@@ -512,7 +538,7 @@ contract InfraStakingPool is
             epochReward[epoch],
             totalWeight(epoch),
             epochClaimed[epoch],
-            epochRolledOver[epoch]
+            epochSwept[epoch]
         );
     }
 
@@ -563,7 +589,7 @@ contract InfraStakingPool is
     /**
      * @dev Goes through the user's unsettled closed months:
      *      - inside the 30-day window → pays the reward,
-     *      - window passed / month rolled over → records it as expired.
+     *      - window passed / month already swept → records it as expired (no payout).
      *      Marks those months settled. Returns the amount paid.
      */
     function _settle(address user) internal returns (uint256 paid) {
@@ -573,7 +599,7 @@ contract InfraStakingPool is
         for (uint256 e = from; e <= to; e++) {
             uint256 r = userEpochReward(user, e);
             if (r == 0) continue;
-            if (block.timestamp < claimDeadline(e) && !epochRolledOver[e]) {
+            if (block.timestamp < claimDeadline(e) && !epochSwept[e]) {
                 paid += r;
                 epochClaimed[e] += r;
             } else {

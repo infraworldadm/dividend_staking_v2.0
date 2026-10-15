@@ -20,6 +20,7 @@ contract InfraStakingPoolTest is Test {
     address alice = address(0xA1);
     address bob = address(0xB0B);
     address feePayer = address(0xFEE);
+    address adminWallet = address(0xAD);
 
     uint256 constant OCT_1 = 1790812800; // 2026-10-01
     uint256 constant OCT_15 = 1792022400; // 2026-10-15
@@ -41,7 +42,7 @@ contract InfraStakingPoolTest is Test {
 
         InfraStakingPool impl = new InfraStakingPool();
         pool = InfraStakingPool(
-            payable(new ERC1967Proxy(address(impl), abi.encodeCall(InfraStakingPool.initialize, (owner, address(dividend)))))
+            payable(new ERC1967Proxy(address(impl), abi.encodeCall(InfraStakingPool.initialize, (owner, address(dividend), adminWallet))))
         );
 
         vm.prank(owner);
@@ -142,13 +143,10 @@ contract InfraStakingPoolTest is Test {
         (uint256 p,) = pool.pendingRewards(alice);
         assertEq(p, 0);
 
-        // October had no weight → anyone can roll its rewards into November
-        pool.rolloverExpired(E_OCT);
-        assertEq(pool.epochReward(E_NOV), 500 ether);
-
-        vm.warp(DEC_1 + 1);
-        (p,) = pool.pendingRewards(alice);
-        assertEq(p, 500 ether);
+        // October had no stakers → its rewards go to the admin wallet as soon as it closes
+        pool.sweepExpired(E_OCT);
+        assertEq(adminWallet.balance, 500 ether);
+        assertEq(pool.epochReward(E_NOV), 0);
     }
 
     function test_claimWindowExpiryAndRollover() public {
@@ -166,14 +164,15 @@ contract InfraStakingPoolTest is Test {
 
         vm.prank(bob);
         vm.expectRevert("Claim window open");
-        pool.rolloverExpired(E_NOV);
+        pool.sweepExpired(E_NOV);
 
         vm.warp(DEC_1 + 30 days);
         (uint256 pb,) = pool.pendingRewards(bob);
         assertEq(pb, 0);
 
-        pool.rolloverExpired(E_NOV);
-        assertEq(pool.epochReward(E_DEC), 100 ether); // Bob's unclaimed share moved to December
+        pool.sweepExpired(E_NOV);
+        assertEq(adminWallet.balance, 100 ether); // Bob's unclaimed share → admin wallet
+        assertEq(pool.epochReward(E_DEC), 0); // NOT forwarded to the next month
 
         vm.prank(bob);
         vm.expectRevert("No rewards");
@@ -181,13 +180,9 @@ contract InfraStakingPoolTest is Test {
         // his November share existed but is no longer claimable
         assertEq(pool.userEpochReward(bob, E_NOV), 100 ether);
 
-        // Both locks were 1 month (November only) → nobody earns in December,
-        // so December's pool rolls forward as soon as December closes.
-        vm.warp(JAN_1 + 1);
-        (uint256 pa,) = pool.pendingRewards(alice);
-        assertEq(pa, 0);
-        pool.rolloverExpired(E_DEC);
-        assertEq(pool.epochReward(E_DEC + 1), 100 ether);
+        vm.prank(alice);
+        vm.expectRevert("Already swept");
+        pool.sweepExpired(E_NOV);
     }
 
     function test_earningStopsWhenLockEnds() public {
@@ -231,8 +226,8 @@ contract InfraStakingPoolTest is Test {
         vm.warp(JAN_1 + 1);
         (uint256 p,) = pool.pendingRewards(alice);
         assertEq(p, 0);
-        pool.rolloverExpired(E_DEC); // nobody earned December → rolls forward right away
-        assertEq(pool.epochReward(E_DEC + 1), 30 ether);
+        pool.sweepExpired(E_DEC); // nobody earned December → admin wallet right away
+        assertEq(adminWallet.balance, 30 ether);
     }
 
     function test_releaseAfterGracePeriod() public {
@@ -262,9 +257,9 @@ contract InfraStakingPoolTest is Test {
         (uint256 aliceAmt,,,,,,,) = pool.users(alice);
         assertEq(aliceAmt, 0);
 
-        // forfeited rewards roll into the running month
-        pool.rolloverExpired(E_NOV);
-        assertEq(pool.epochReward(E_DEC), 100 ether); // Alice's 40 + Bob's unclaimed 60
+        // forfeited rewards (Alice's 40 + Bob's unclaimed 60 from November) → admin wallet
+        pool.sweepExpired(E_NOV);
+        assertEq(adminWallet.balance, 100 ether);
 
         // batch: Bob still inside his window → skipped, no revert
         address[] memory list = new address[](2);
@@ -279,7 +274,7 @@ contract InfraStakingPoolTest is Test {
         uint256 bobBefore = bob.balance;
         vm.prank(bob);
         pool.withdraw();
-        assertEq(bob.balance - bobBefore, 60 ether + 100 ether);
+        assertEq(bob.balance - bobBefore, 60 ether); // no December rewards were funded
         assertEq(pool.totalStaked(), 0);
     }
 
@@ -300,6 +295,59 @@ contract InfraStakingPoolTest is Test {
         assertEq(periods, 2);
         assertEq(activeFrom, E_DEC + 1); // January 2027
         assertEq(lockEnd, pool.epochStart(E_DEC + 3)); // March 1 2027
+    }
+
+    function test_afterGraceOnlyPrincipal() public {
+        vm.prank(alice);
+        pool.stake{value: 50 ether}(1); // earns November; grace ends Dec 31
+        vm.warp(NOV_1 + 1);
+        _fees(1_000 ether); // e.g. dividend pool held 1,000 reAED at month end
+
+        // within grace: principal + rewards
+        vm.warp(DEC_1 + 29 days);
+        (uint256 p,) = pool.pendingRewards(alice);
+        assertEq(p, 1_000 ether);
+
+        // grace passed: principal only, rewards to admin wallet
+        vm.warp(DEC_1 + 30 days);
+        uint256 before = alice.balance;
+        vm.prank(alice);
+        pool.withdraw();
+        assertEq(alice.balance - before, 50 ether);
+        pool.sweepExpired(E_NOV);
+        assertEq(adminWallet.balance, 1_000 ether);
+        assertEq(address(pool).balance, 0);
+    }
+
+    function test_onlyDividendPoolOrOwnerCanFund() public {
+        vm.prank(feePayer);
+        vm.expectRevert("Only dividend pool");
+        pool.fundRewardsFromDividendPool{value: 1 ether}();
+
+        vm.prank(feePayer);
+        (bool ok, ) = address(pool).call{value: 1 ether}("");
+        assertFalse(ok);
+
+        vm.deal(owner, 5 ether);
+        vm.prank(owner);
+        pool.fundRewardsFromDividendPool{value: 5 ether}();
+        assertEq(pool.epochReward(E_OCT), 5 ether);
+
+        // dividend pool's plain-transfer backup path also works
+        vm.prank(feePayer);
+        (ok, ) = address(dividend).call{value: 2 ether}("");
+        vm.prank(owner);
+        dividend.sendRewardsToStakingPlain(2 ether);
+        assertEq(pool.epochReward(E_OCT), 7 ether);
+    }
+
+    function test_adminWalletChangeOnlyOwner() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        pool.setAdminWallet(alice);
+        vm.prank(owner);
+        pool.setAdminWallet(address(0xCAFE));
+        assertEq(pool.adminWallet(), address(0xCAFE));
     }
 
     // ---------------- owner ----------------
@@ -347,7 +395,7 @@ contract InfraStakingPoolTest is Test {
     function test_cannotInitializeImplementation() public {
         InfraStakingPool impl = new InfraStakingPool();
         vm.expectRevert();
-        impl.initialize(owner, address(dividend));
+        impl.initialize(owner, address(dividend), adminWallet);
     }
 
     // ---------------- invariant-style fuzz ----------------
