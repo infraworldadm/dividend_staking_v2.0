@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AdminLogin } from "@/components/admin/AdminLogin";
 import { isAdminLoginConfigured } from "@/lib/adminAuth";
 
-export const metadata: Metadata = { title: "INFRA Staking — Admin login", robots: { index: false } };
+export const metadata: Metadata = { title: "Admin login", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default function AdminLoginRoute() {
