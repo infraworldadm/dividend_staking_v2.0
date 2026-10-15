@@ -22,14 +22,14 @@ function infraProvider(): Eth | undefined {
   const list = e.providers?.length ? e.providers : [e];
   const flagged = list.find((p) => p.isRabby);
   if (flagged) return flagged;
-  return isMobile() ? e : undefined;
+  // inside a mobile wallet's browser (or any phone) take whatever the app injected
+  return isMobile() || (e as { isInfra?: boolean }).isInfra ? e : undefined;
 }
 
 const scheme = process.env.NEXT_PUBLIC_INFRA_WALLET_SCHEME || "";
 
 export const infraWallet = ({ projectId }: { projectId: string }): Wallet => {
   const injectedOk = Boolean(infraProvider());
-  const useWc = !injectedOk;
 
   return {
     id: "infra-wallet",
@@ -43,8 +43,8 @@ export const infraWallet = ({ projectId }: { projectId: string }): Wallet => {
       mobile: "https://infraworld.org/wallet",
       qrCode: "https://infraworld.org/wallet",
     },
-    mobile: { getUri: useWc ? (uri: string) => (scheme ? `${scheme}${encodeURIComponent(uri)}` : uri) : undefined },
-    qrCode: useWc
+    mobile: { getUri: (uri: string) => (scheme ? `${scheme}${encodeURIComponent(uri)}` : uri) },
+    qrCode: !injectedOk
       ? {
           getUri: (uri: string) => uri,
           instructions: {
@@ -67,12 +67,54 @@ export const infraWallet = ({ projectId }: { projectId: string }): Wallet => {
         ],
       },
     },
+    // Decide AT CLICK TIME (in-app browsers may inject window.ethereum after our script loads):
+    // injected provider if present, otherwise WalletConnect.
     createConnector: (details) =>
-      createConnector((config) => ({
-        ...(useWc
-          ? walletConnect({ projectId, showQrModal: false, metadata: { name: "INFRA Staking", description: "INFRA Dividend Pool staking", url: typeof window !== "undefined" ? window.location.origin : "https://dividend-staking-v2-0.vercel.app", icons: [] } })(config)
-          : injected({ target: () => ({ id: "infra-wallet", name: "INFRA Wallet", provider: infraProvider() as never }) })(config)),
-        ...details,
-      })),
+      createConnector((config) => {
+        const inj = injected({
+          target: () => ({ id: "infra-wallet", name: "INFRA Wallet", provider: infraProvider() as never }),
+        })(config);
+        const wc = walletConnect({
+          projectId,
+          showQrModal: false,
+          metadata: {
+            name: "INFRA Staking",
+            description: "INFRA Dividend Pool staking",
+            url: typeof window !== "undefined" ? window.location.origin : "https://dividend-staking-v2-0.vercel.app",
+            icons: [],
+          },
+        })(config);
+        let active: { connect: unknown } | null = null;
+        const pick = () => active ?? (infraProvider() ? inj : wc);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const call = (k: string, ...a: unknown[]): any => {
+          const c = pick() as unknown as Record<string, (...x: unknown[]) => unknown>;
+          return c[k]?.apply(c, a);
+        };
+        return {
+          ...wc,
+          ...details,
+          async setup() {
+            await wc.setup?.();
+          },
+          async connect(p?: unknown) {
+            const c = (infraProvider() ? inj : wc) as unknown as { connect: (x?: unknown) => Promise<never> };
+            active = c;
+            return c.connect.call(c, p);
+          },
+          async disconnect() {
+            await call("disconnect");
+            active = null;
+          },
+          getAccounts: () => call("getAccounts"),
+          getChainId: () => call("getChainId"),
+          getProvider: (p?: unknown) => call("getProvider", p),
+          isAuthorized: () => call("isAuthorized"),
+          switchChain: (p: unknown) => call("switchChain", p),
+          onAccountsChanged: (a: unknown) => call("onAccountsChanged", a),
+          onChainChanged: (c: unknown) => call("onChainChanged", c),
+          onDisconnect: (e: unknown) => call("onDisconnect", e),
+        } as typeof wc;
+      }),
   };
 };
