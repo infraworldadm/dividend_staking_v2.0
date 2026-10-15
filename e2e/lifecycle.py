@@ -2,8 +2,8 @@ import json, subprocess, urllib.request, datetime as dt, calendar, sys
 from playwright.sync_api import sync_playwright
 
 RPC="http://127.0.0.1:8545"; SITE="http://localhost:3120"
-CAST="/tmp/claude-0/-home-claude/39f503f9-914a-5c1c-bab7-f70a743fb0cc/scratchpad/bin/cast"
-OUT="/tmp/claude-0/-home-claude/39f503f9-914a-5c1c-bab7-f70a743fb0cc/scratchpad/e2e"
+CAST="cast"  # Foundry cast on PATH
+OUT="e2e/screens"
 POOL="0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"; DIV="0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
 ADMIN_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 USER="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
