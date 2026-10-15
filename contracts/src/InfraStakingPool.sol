@@ -79,8 +79,50 @@ contract InfraStakingPool is
     uint256 public constant MAX_PERIODS = 12;
 
     // ════════════════════════════════════════════════════════════════════
-    //  STORAGE  (append-only: never reorder or remove when upgrading)
+    //  STORAGE
+    //  Slots 0–11 keep the EXACT layout of the previous implementation
+    //  (StakingPoolFromDividendPoolV2) so this contract can be installed on the
+    //  existing proxy with upgradeToAndCall(..., upgradeToMonthlyPool(...)).
+    //  New state lives in what was that contract's __gap (slots 12+, all zero).
+    //  Append-only from here: never reorder or remove when upgrading again.
     // ════════════════════════════════════════════════════════════════════
+
+    /// @dev Previous implementation's per-user record (slot 2). No longer used.
+    struct LegacyUserInfo {
+        uint256 amount;
+        uint256 startDate;
+        uint256 countOfPeriods;
+        uint256 endDate;
+        uint256 weight;
+        uint256 lastUpdate;
+        uint256 rewardDebt;
+        uint256 pendingClaimable;
+        uint256 totalClaimed;
+        uint256 rewardExpiryAt;
+        uint256 expiredRewardsTotal;
+    }
+
+    // ── slots 0–11: previous implementation (kept in place) ──
+
+    /// @notice slot 0 — DividendPoolNativeV2: the ONLY non-owner source of rewards.
+    address public dividendPool;
+    /// @notice slot 1 — wallet that receives expired rewards (was `rewardAdmin`).
+    address public adminWallet;
+    /// @dev slot 2 — legacy per-user records (unused; must be empty of live stakes to upgrade).
+    mapping(address => LegacyUserInfo) private legacyUsers;
+    /// @notice slot 3 — principal currently held for stakers (same meaning as before).
+    uint256 public totalStaked;
+    /// @dev slot 4 — legacy totalLocked (must be 0 to upgrade).
+    uint256 public legacyTotalLocked;
+    uint256 private legacyTotalWeight; // slot 5
+    uint256 private legacyLastGlobalUpdate; // slot 6
+    uint256 private legacyAccRewardPerWeight; // slot 7
+    uint256 private legacyRewardVaultBalance; // slot 8
+    uint256 private legacyUndistributedRewards; // slot 9
+    uint256 private legacyTotalRewarded; // slot 10
+    uint256 private legacyTotalExpired; // slot 11
+
+    // ── slots 12+: monthly pool ──
 
     /// @notice Everything the contract knows about one wallet's stake.
     struct UserInfo {
@@ -94,31 +136,23 @@ contract InfraStakingPool is
         uint256 totalExpired; // lifetime rewards this wallet missed (claim window passed)
     }
 
-    /// @notice Stake record per wallet. Public getter returns the struct fields in order.
+    /// @notice slot 12 — stake record per wallet. Public getter returns the struct fields in order.
     mapping(address => UserInfo) public users;
 
-    /// @notice Address of DividendPoolNativeV2 — the fee collector whose month-end balance
-    ///         is distributed here. Only this address (or the owner) can fund rewards.
-    address public dividendPool;
-
-    /// @notice Principal currently held for stakers (active + waiting to activate).
-    ///         Used to protect principal from ownerWithdrawRewards().
-    uint256 public totalStaked;
-
-    /// @notice Principal earning in epoch `lastSyncedEpoch` (and later, until it changes).
+    /// @notice slot 13 — principal earning in epoch `lastSyncedEpoch` (and later, until it changes).
     uint256 public activeAmount;
 
-    /// @notice Latest epoch whose base weight has been written to storage by _sync().
+    /// @notice slot 14 — latest epoch whose base weight has been written to storage by _sync().
     uint256 public lastSyncedEpoch;
 
     /// @notice epoch => principal that starts earning at the beginning of that epoch.
     mapping(uint256 => uint256) public scheduledActivation;
 
-    /// @notice epoch => activeAmount × epoch length, snapshotted when the epoch starts.
-    mapping(uint256 => uint256) public epochBaseWeight;
-
     /// @notice epoch => principal that stops earning at the beginning of that epoch (lock ended).
     mapping(uint256 => uint256) public scheduledDeactivation;
+
+    /// @notice epoch => activeAmount × epoch length, snapshotted when the epoch starts.
+    mapping(uint256 => uint256) public epochBaseWeight;
 
     /// @notice epoch => reward pool (reAED) to be split among that epoch's stakers.
     mapping(uint256 => uint256) public epochReward;
@@ -137,9 +171,6 @@ contract InfraStakingPool is
 
     /// @notice Lifetime reAED taken by the owner via ownerWithdrawRewards().
     uint256 public totalRewardsWithdrawnByOwner;
-
-    /// @notice Wallet that receives expired (unclaimed after 30 days) rewards.
-    address public adminWallet;
 
     /// @notice Lifetime expired rewards sent to the admin wallet.
     uint256 public totalExpiredSwept;
@@ -196,6 +227,33 @@ contract InfraStakingPool is
         lastSyncedEpoch = currentEpoch();
         emit DividendPoolUpdated(address(0), dividendPool_);
         emit AdminWalletUpdated(address(0), adminWallet_);
+    }
+
+    /**
+     * @notice One-time migration when installing this contract on the EXISTING proxy that
+     *         ran StakingPoolFromDividendPoolV2. Call it through
+     *         upgradeToAndCall(newImplementation, abi.encodeCall(upgradeToMonthlyPool, (pool, admin))).
+     * @dev Refuses to run while the old contract still holds any stake. Clears the old
+     *      accounting; any reAED already sitting in the contract becomes surplus that the
+     *      owner can recover with ownerWithdrawRewards().
+     */
+    function upgradeToMonthlyPool(address dividendPool_, address adminWallet_) external reinitializer(3) onlyOwner {
+        require(dividendPool_ != address(0) && adminWallet_ != address(0), "zero address");
+        require(totalStaked == 0 && legacyTotalLocked == 0, "Legacy stakes exist");
+
+        legacyTotalWeight = 0;
+        legacyLastGlobalUpdate = 0;
+        legacyAccRewardPerWeight = 0;
+        legacyRewardVaultBalance = 0;
+        legacyUndistributedRewards = 0;
+        legacyTotalRewarded = 0;
+        legacyTotalExpired = 0;
+
+        emit DividendPoolUpdated(dividendPool, dividendPool_);
+        emit AdminWalletUpdated(adminWallet, adminWallet_);
+        dividendPool = dividendPool_;
+        adminWallet = adminWallet_;
+        lastSyncedEpoch = currentEpoch();
     }
 
     /// @dev Only the owner can upgrade the implementation (UUPS).
@@ -653,5 +711,5 @@ contract InfraStakingPool is
     }
 
     /// @dev Reserved storage slots so future upgrades can add variables safely.
-    uint256[40] private __gap;
+    uint256[25] private __gap; // slots 25–49 (previous __gap ended at slot 49)
 }

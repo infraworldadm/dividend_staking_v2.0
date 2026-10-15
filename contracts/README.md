@@ -15,6 +15,21 @@
 - **Claim within 30 days after the month closes.** After that, anyone can call `sweepExpired(epoch)`: unclaimed rewards go to the admin wallet. A month with no stakers can be swept as soon as it closes.
 - **Owner (use a multisig):** UUPS upgrades, `setDividendPool`, `setAdminWallet`, `ownerWithdrawRewards` (reward funds only, never principal), `emergencyWithdraw` (any amount, including principal).
 
+## Going live on UAT — upgrade the existing proxy (recommended)
+The current staking proxy `0xeEb712B20b9d4AEF535a781e1222FD1174fFa919` runs the old
+`StakingPoolFromDividendPoolV2` (source in `src/legacy/`). `InfraStakingPool` keeps that
+contract's storage slots 0–11 and uses its reserved gap for new state, so it can be installed
+in place (same address). `upgradeToMonthlyPool` refuses to run while any old stake is live.
+
+```bash
+PROXY=0xeEb712B20b9d4AEF535a781e1222FD1174fFa919 \
+DIVIDEND_POOL=0xCD938d217a31C85B9041a218A14015E289D61aC0 \
+ADMIN_WALLET=<admin wallet> \
+forge script script/UpgradeLegacy.s.sol --rpc-url https://uat.infraworld.org/ --broadcast --private-key $OWNER_KEY
+```
+Then, as dividend-pool owner (if not already): `setStakingContract(0xeEb712B20b9d4AEF535a781e1222FD1174fFa919)`,
+and set `NEXT_PUBLIC_STAKING_POOL_ADDRESS` to the same address in Vercel. Tested in `test/UpgradeFromLegacy.t.sol`.
+
 ## Monthly operation
 1. During the month: fees accumulate in the dividend pool.
 2. Before month end (e.g. last day 23:00 UTC): dividend-pool owner calls `sendRewardsToStaking(balance)` → credited to the running month.
