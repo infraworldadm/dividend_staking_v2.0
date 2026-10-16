@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-16
+- **UAT go-live:** staking proxy upgraded (impl `0x53Ab…Da64`, tx `0x4721…0c37`); dividend pool upgraded (impl `0x987a…5475`, tx `0x86e6…8868`). Staking open on the website; automatic monthly payouts active.
 - Project structure & docs: `deployments/uat.json` registry, `docs/` (architecture, contracts, operations), file headers and comments across the codebase, CI workflow, ESLint config fix.
 
 ## 2026-10-15

@@ -22,10 +22,10 @@
       "name": "DividendPoolNativeV2",
       "kind": "UUPS proxy (ERC-1967)",
       "proxy": "0xCD938d217a31C85B9041a218A14015E289D61aC0",
-      "implementation": "0x09589dFB8753B4199455c1A5D805314FD8d29Eca",
+      "implementation": "0x987a1d0954262717ED5B1445f49b2A0980f95475",
       "source": "contracts/src/DividendPoolNativeV2.sol",
-      "status": "pending-upgrade",
-      "notes": "Linked to staking proxy (stakingContract set). STILL NEEDS the new implementation with pullForStaking() before 1 Nov 2026 \u2014 otherwise automatic payouts cannot pull funds."
+      "status": "live",
+      "notes": "Upgraded 2026-10-16 (adds pullForStaking). Linked to staking proxy. Automatic monthly payouts enabled."
     }
   },
   "wallets": {
@@ -52,6 +52,13 @@
       "action": "Staking proxy upgraded to InfraStakingPool (block 7280851). Dividend pool already linked.",
       "txHashes": [
         "0x47214585da0fd70530786cc84dcabbc5376f8c6368d40aa5762c26b470df0c37"
+      ]
+    },
+    {
+      "date": "2026-10-16",
+      "action": "Dividend pool upgraded to new DividendPoolNativeV2 (pullForStaking) at block 7281809. Automatic payouts fully enabled.",
+      "txHashes": [
+        "0x86e6ee45b70c65e9a63d8ac94a4359190ce329c48519488ca18ef10bb2b36868"
       ]
     }
   ]
