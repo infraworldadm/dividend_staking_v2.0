@@ -13,10 +13,10 @@
       "name": "InfraStakingPool",
       "kind": "UUPS proxy (ERC-1967)",
       "proxy": "0xeEb712B20b9d4AEF535a781e1222FD1174fFa919",
-      "implementation": null,
+      "implementation": "0x53AbAE615F57BBD1C01e697e4D458C55C20ADa64",
       "source": "contracts/src/InfraStakingPool.sol",
-      "status": "pending-upgrade",
-      "notes": "Proxy currently runs the legacy StakingPoolFromDividendPoolV2. Upgrade with upgradeToAndCall(newImpl, upgradeToMonthlyPool(dividendPool, adminWallet)) — see contracts/DEPLOY.md."
+      "status": "live",
+      "notes": "Upgraded in place on 2026-10-16 via upgradeToAndCall(impl, upgradeToMonthlyPool(dividendPool, adminWallet)). Initialized v3, lock options 1/2/6/8/9/12, auto-pull on."
     },
     "dividendPool": {
       "name": "DividendPoolNativeV2",
@@ -25,7 +25,7 @@
       "implementation": "0x09589dFB8753B4199455c1A5D805314FD8d29Eca",
       "source": "contracts/src/DividendPoolNativeV2.sol",
       "status": "pending-upgrade",
-      "notes": "Needs the new implementation that adds pullForStaking() (automatic monthly payouts). No storage changes."
+      "notes": "Linked to staking proxy (stakingContract set). STILL NEEDS the new implementation with pullForStaking() before 1 Nov 2026 \u2014 otherwise automatic payouts cannot pull funds."
     }
   },
   "wallets": {
@@ -46,6 +46,13 @@
       "date": "2026-10-15",
       "action": "Contracts finalized (monthly epochs, multi-position, auto-pull, auto-sweep). Awaiting on-chain upgrade.",
       "txHashes": []
+    },
+    {
+      "date": "2026-10-16",
+      "action": "Staking proxy upgraded to InfraStakingPool (block 7280851). Dividend pool already linked.",
+      "txHashes": [
+        "0x47214585da0fd70530786cc84dcabbc5376f8c6368d40aa5762c26b470df0c37"
+      ]
     }
   ]
 }

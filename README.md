@@ -91,9 +91,9 @@ Solidity 0.8.26 · OpenZeppelin 5.2 (upgradeable) · Foundry · Playwright (e2e)
 
 | Item | State |
 |---|---|
-| Website | Live on Vercel (shows live dividend-pool balance; staking switches on after upgrade) |
-| Staking proxy `0xeEb7…a919` | **Pending upgrade** to `InfraStakingPool` |
-| Dividend pool `0xCD93…1aC0` | **Pending upgrade** (adds `pullForStaking`) |
+| Website | Live on Vercel (staking on once `NEXT_PUBLIC_STAKING_POOL_ADDRESS` is set) |
+| Staking proxy `0xeEb7…a919` | **Live** — `InfraStakingPool` impl `0x53Ab…Da64` (2026-10-16) |
+| Dividend pool `0xCD93…1aC0` | **Pending upgrade** (adds `pullForStaking`) — required before 1 Nov 2026 |
 | Audit | Not yet — required before mainnet |
 
 Track changes in [CHANGELOG.md](CHANGELOG.md).
