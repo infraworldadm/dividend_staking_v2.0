@@ -1,6 +1,7 @@
 import type { Wallet } from "@rainbow-me/rainbowkit";
 import { createConnector } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
+import { UserRejectedRequestError } from "viem";
 
 /**
  * INFRA Wallet — extension AND mobile app.
@@ -26,7 +27,25 @@ function infraProvider(): Eth | undefined {
   return isMobile() || (e as { isInfra?: boolean }).isInfra ? e : undefined;
 }
 
+/** WalletConnect deep-link prefix of the INFRA Wallet app (e.g. "infrawallet://wc?uri="). */
 const scheme = process.env.NEXT_PUBLIC_INFRA_WALLET_SCHEME || "";
+/** Link that opens a URL inside the app's dApp browser; `{url}` is replaced (e.g. "infrawallet://browser?url={url}"). */
+const dappLink = process.env.NEXT_PUBLIC_INFRA_WALLET_DAPP_LINK || "";
+
+/** Event the "Open in INFRA Wallet" help sheet listens for (see OpenInInfraWallet.tsx). */
+export const OPEN_IN_APP_EVENT = "infra:open-in-app";
+
+/**
+ * Phone browser with no injected wallet: open this page inside the INFRA Wallet app.
+ * Uses the app's dApp-browser link when configured, otherwise shows step-by-step help.
+ */
+function openInApp() {
+  if (dappLink) {
+    window.location.href = dappLink.replace("{url}", encodeURIComponent(window.location.href));
+  } else {
+    window.dispatchEvent(new Event(OPEN_IN_APP_EVENT));
+  }
+}
 
 export const infraWallet = ({ projectId }: { projectId: string }): Wallet => {
   const injectedOk = Boolean(infraProvider());
@@ -43,7 +62,9 @@ export const infraWallet = ({ projectId }: { projectId: string }): Wallet => {
       mobile: "https://infraworld.org/wallet",
       qrCode: "https://infraworld.org/wallet",
     },
-    mobile: { getUri: (uri: string) => (scheme ? `${scheme}${encodeURIComponent(uri)}` : uri) },
+    // WalletConnect deep link only when the app's scheme is known; otherwise we open the
+    // page inside the app instead (see connect()).
+    mobile: scheme ? { getUri: (uri: string) => `${scheme}${encodeURIComponent(uri)}` } : undefined,
     qrCode: !injectedOk
       ? {
           getUri: (uri: string) => uri,
@@ -98,6 +119,11 @@ export const infraWallet = ({ projectId }: { projectId: string }): Wallet => {
             await wc.setup?.();
           },
           async connect(p?: unknown) {
+            // Phone without INFRA Wallet's provider and no WalletConnect scheme: hand off to the app.
+            if (isMobile() && !infraProvider() && !scheme) {
+              openInApp();
+              throw new UserRejectedRequestError(new Error("Open this page in the INFRA Wallet app"));
+            }
             const c = (infraProvider() ? inj : wc) as unknown as { connect: (x?: unknown) => Promise<never> };
             active = c;
             return c.connect.call(c, p);

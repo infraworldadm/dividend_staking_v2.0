@@ -415,3 +415,17 @@ html[data-theme="dark"] .claimplan li .mono { color: #fbbf24 }
 @keyframes phFlow { from { transform: translateX(-100%) } to { transform: translateX(250%) } }
 @keyframes phDelta { 0% { opacity: 0; transform: translateY(8px) scale(.9) } 15% { opacity: 1; transform: none } 80% { opacity: 1 } 100% { opacity: 0; transform: translateY(-10px) } }
 @media (prefers-reduced-motion: reduce) { .poolhero, .poolhero .ph-in::after, .ph-bar i { animation: none } }
+
+/* ── "Open in INFRA Wallet" help sheet (above the wallet modal) ── */
+.oia { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: end center; background: rgba(6,8,14,.55); backdrop-filter: blur(4px); animation: fadeIn .2s ease }
+@media (min-width: 640px) { .oia { place-items: center } }
+.oia-card { position: relative; width: min(420px, 100%); display: grid; gap: 12px; justify-items: start; padding: 22px 20px calc(20px + env(safe-area-inset-bottom)); border-radius: 22px 22px 0 0; background: var(--white); color: var(--t1); box-shadow: 0 -10px 40px rgba(0,0,0,.25); animation: rise .25s ease }
+@media (min-width: 640px) { .oia-card { border-radius: 22px } }
+.oia-card h3 { font-size: 1.2rem; font-weight: 600; letter-spacing: -.02em }
+.oia-card p { font-size: .88rem; color: var(--t2) }
+.oia-card ol { display: grid; gap: 8px; width: 100%; font-size: .88rem }
+.oia-card li { display: flex; align-items: center; gap: 10px }
+.oia-card li > b:first-child { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 50%; background: #1f5bff; color: #fff; font-size: .72rem }
+.oia-link { width: 100%; padding: 10px 12px; border-radius: 12px; background: var(--field); font-size: .82rem; overflow-wrap: anywhere }
+.oia-x { position: absolute; top: 14px; right: 14px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--field) }
+.oia-get { justify-self: center; font-size: .82rem; color: var(--blue) }

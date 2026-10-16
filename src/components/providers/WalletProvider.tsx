@@ -9,6 +9,7 @@ import { useTheme } from "@/components/motion/ThemeToggle";
 import { WagmiProvider } from "wagmi";
 import { useState } from "react";
 import { wagmiConfig } from "@/lib/web3/wagmi";
+import { OpenInInfraWallet } from "@/components/providers/OpenInInfraWallet";
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -23,7 +24,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider
           theme={rkTheme}
-        >{children}</RainbowKitProvider>
+        >
+          {children}
+          <OpenInInfraWallet />
+        </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

@@ -10,6 +10,7 @@
 | `NEXT_PUBLIC_NATIVE_NAME` / `NEXT_PUBLIC_NATIVE_SYMBOL` | public | no | Default `ReAED`. |
 | `NEXT_PUBLIC_DIVIDEND_POOL_ADDRESS` | public | no | Override the registry's dividend pool (local testing). |
 | `NEXT_PUBLIC_INFRA_WALLET_SCHEME` | public | no | INFRA Wallet app deep-link prefix, e.g. `infrawallet://wc?uri=`. |
+| `NEXT_PUBLIC_INFRA_WALLET_DAPP_LINK` | public | no | Opens the site inside the INFRA Wallet app browser from a phone browser, e.g. `infrawallet://browser?url={url}`. Without it, a "Copy link" help sheet is shown. |
 | `NEXT_PUBLIC_SITE_URL` | public | no | Canonical URL for SEO/share images (set when using a custom domain). |
 | `NEXT_PUBLIC_POOL_START_MONTH` | public | no | First month shown in cycle history (`YYYY-MM`). |
 | `ADMIN_USERS` | server | for /admin | `user:pass,user2:pass2`. Remove a pair → that operator is logged out immediately. |
