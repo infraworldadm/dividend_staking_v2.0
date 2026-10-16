@@ -1,5 +1,5 @@
 /**
- * @file robots.txt — allows the public site, blocks /admin, /api and /wallet-debug from indexing.
+ * @file robots.txt — allows the public site, blocks /api. Private pages (/admin, /wallet-debug) are NOT listed here so their paths aren't advertised; they carry noindex meta instead.
  */
 import type { MetadataRoute } from "next";
 
@@ -7,7 +7,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://dividend-staking-v
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: ["/admin", "/api/", "/wallet-debug"] }],
+    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/"] }],
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,
   };

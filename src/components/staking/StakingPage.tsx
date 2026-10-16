@@ -602,8 +602,7 @@ export function StakingPage() {
 
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-6 text-[0.8rem] text-[var(--t3)]">
           <span>
-            © {new Date().getFullYear()} INFRA · Dividend Pool ·{" "}
-            <a href="/admin" className="hover:text-[var(--blue)]">Admin</a>
+            © {new Date().getFullYear()} INFRA · Dividend Pool
           </span>
           {explorer && shortPool ? (
             <a
