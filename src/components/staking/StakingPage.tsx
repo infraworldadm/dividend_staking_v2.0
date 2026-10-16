@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Main staking page: composes hero, stats, guide banner, tabs (My stakes / Claim / Stake), cycles, activity and the guided tour. Owns UI state derived from useStakingPool.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBalance } from "wagmi";
 import { formatEther, parseEther } from "viem";
@@ -10,7 +13,6 @@ import { RewardsPanel } from "@/components/staking/RewardsPanel";
 import { HowItWorksCard } from "@/components/staking/HowItWorksCard";
 import { CycleTimeline } from "@/components/staking/CycleTimeline";
 import { Tour, type TourStep } from "@/components/staking/Tour";
-import { Num } from "@/components/motion/Num";
 import { PoolHero } from "@/components/staking/PoolHero";
 import { StakeWindow, WhyStake } from "@/components/staking/StakeWindow";
 import { ActivityList } from "@/components/staking/ActivityList";

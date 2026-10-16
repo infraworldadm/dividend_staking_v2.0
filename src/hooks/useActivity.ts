@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Reads the connected wallet's Staked / Claimed / Withdrawn events and returns a sorted activity list.
+ */
 import { useEffect, useState } from "react";
 import { usePublicClient } from "wagmi";
 import { stakingPoolAbi, stakingPoolAddress, isStakingConfigured } from "@/lib/web3/contract";

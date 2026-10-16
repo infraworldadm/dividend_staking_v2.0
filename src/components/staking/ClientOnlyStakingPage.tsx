@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Loads the staking page on the client only (wallet state is browser-only).
+ */
 import dynamic from "next/dynamic";
 
 const StakingPage = dynamic(

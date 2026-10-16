@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Guidance UI: context banner (what to do now), tab switcher, positions list and empty states.
+ */
 import type { ReactNode } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { ArrowRight } from "lucide-react";

@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file App-wide providers: wagmi config, React Query and RainbowKit (theme-aware).
+ */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RainbowKitProvider, darkTheme, lightTheme } from "@rainbow-me/rainbowkit";
 import { useTheme } from "@/components/motion/ThemeToggle";

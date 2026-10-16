@@ -1,3 +1,6 @@
+/**
+ * @file Short explainer card of the monthly staking model.
+ */
 export function HowItWorksCard() {
   return (
     <div className="tile dark">

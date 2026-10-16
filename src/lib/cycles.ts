@@ -1,4 +1,7 @@
 /**
+ * @file Calendar-month cycle math (UTC) mirroring the contract: epoch ids, cycle boundaries, claim windows and labels.
+ */
+/**
  * Monthly reward cycles (UTC, matching block timestamps).
  *
  * - A cycle is one calendar month: 1st 00:00 UTC → 1st of next month 00:00 UTC.

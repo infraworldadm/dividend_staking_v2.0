@@ -1,3 +1,6 @@
+/**
+ * @file POST /api/admin/logout — clears the admin session cookie.
+ */
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/adminAuth";
 

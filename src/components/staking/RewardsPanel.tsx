@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Claim panel: claimable rewards, claim deadline and the Claim button.
+ */
 import { ArrowRight } from "lucide-react";
 import { Num } from "@/components/motion/Num";
 

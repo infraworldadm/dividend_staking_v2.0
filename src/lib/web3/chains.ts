@@ -1,3 +1,6 @@
+/**
+ * @file INFRA chain definition for viem/wagmi. All values overridable via NEXT_PUBLIC_* env (defaults: UAT, chain 15324).
+ */
 import { defineChain } from "viem";
 
 const envChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "15324");

@@ -89,7 +89,7 @@ export const infraWallet = ({ projectId }: { projectId: string }): Wallet => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const call = (k: string, ...a: unknown[]): any => {
           const c = pick() as unknown as Record<string, (...x: unknown[]) => unknown>;
-          return c[k]?.apply(c, a);
+          return c[k]?.call(c, ...a);
         };
         return {
           ...wc,

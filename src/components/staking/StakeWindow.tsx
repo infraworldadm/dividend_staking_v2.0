@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Staking-window card (when stakes for next month close) and the 'why stake' advantages list.
+ */
 import { CalendarClock, Coins, Layers, LineChart, ShieldCheck, Unlock } from "lucide-react";
 import { CLAIM_BUFFER_DAYS, cyclesAround, fmtDate, fmtEnd } from "@/lib/cycles";
 import { formatCountdown } from "@/lib/format";

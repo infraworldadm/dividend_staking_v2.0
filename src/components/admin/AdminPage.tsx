@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Admin analytics dashboard: pool totals, stakers, lock-length breakdown, unlock schedule, monthly payouts and automation status. Manual on-chain overrides are collapsed and wallet-gated.
+ */
 import { useEffect, useMemo, useState } from "react";
 import { parseEther, type Address } from "viem";
 import {
@@ -47,26 +50,27 @@ export function AdminPage() {
   const curId = epochIdOf(current);
 
   // ---- pool state ----
+  // Pool-level reads; `r(i)` / `big(i)` below index into this list.
   const { data: base, refetch: refetchBase } = useReadContracts({
     contracts: [
-      { ...sp, functionName: "owner" },
-      { ...sp, functionName: "dividendPool" },
-      { ...sp, functionName: "adminWallet" },
-      { ...sp, functionName: "totalStaked" },
-      { ...sp, functionName: "surplusBalance" },
-      { ...sp, functionName: "totalRewardsReceived" },
-      { ...sp, functionName: "totalRewardsClaimed" },
-      { ...sp, functionName: "totalExpiredSwept" },
-      { ...sp, functionName: "epochReward", args: [BigInt(curId)] },
-      { ...sp, functionName: "stakerCount" },
-      { ...sp, functionName: "openPositions" },
-      { ...sp, functionName: "allowedPeriods" },
-      { ...sp, functionName: "totalWeight", args: [BigInt(curId)] },
-      { ...sp, functionName: "rewardOf", args: [BigInt(curId)] },
-      { ...sp, functionName: "autoPullEnabled" },
-      { ...sp, functionName: "lastPulledEpoch" },
-      { ...sp, functionName: "nextSweepEpoch" },
-      { ...sp, functionName: "needsPoke" },
+      { ...sp, functionName: "owner" }, // [0]
+      { ...sp, functionName: "dividendPool" }, // [1]
+      { ...sp, functionName: "adminWallet" }, // [2]
+      { ...sp, functionName: "totalStaked" }, // [3]
+      { ...sp, functionName: "surplusBalance" }, // [4]
+      { ...sp, functionName: "totalRewardsReceived" }, // [5]
+      { ...sp, functionName: "totalRewardsClaimed" }, // [6]
+      { ...sp, functionName: "totalExpiredSwept" }, // [7]
+      { ...sp, functionName: "epochReward", args: [BigInt(curId)] }, // [8]
+      { ...sp, functionName: "stakerCount" }, // [9]
+      { ...sp, functionName: "openPositions" }, // [10]
+      { ...sp, functionName: "allowedPeriods" }, // [11]
+      { ...sp, functionName: "totalWeight", args: [BigInt(curId)] }, // [12]
+      { ...sp, functionName: "rewardOf", args: [BigInt(curId)] }, // [13]
+      { ...sp, functionName: "autoPullEnabled" }, // [14]
+      { ...sp, functionName: "lastPulledEpoch" }, // [15]
+      { ...sp, functionName: "nextSweepEpoch" }, // [16]
+      { ...sp, functionName: "needsPoke" }, // [17]
     ],
     query: { enabled: isStakingConfigured, refetchInterval: 15_000 },
   });
@@ -88,7 +92,7 @@ export function AdminPage() {
   });
   const dvOwner = dv?.[0]?.result as Address | undefined;
   const linkedTo = dv?.[1]?.result as Address | undefined;
-  const { data: dvBal, refetch: refetchDvBal } = useBalance({
+  const { refetch: refetchDvBal } = useBalance({
     address: dividend,
     query: { enabled: Boolean(dividend), refetchInterval: 15_000 },
   });

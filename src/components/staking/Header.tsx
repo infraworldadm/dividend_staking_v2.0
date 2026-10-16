@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Sticky site header: logo, nav links, theme toggle and wallet connect button.
+ */
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount, useBalance } from "wagmi";
 import { ArrowRight } from "lucide-react";

@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Guided first-visit tour: spotlight + card that follows target elements smoothly.
+ */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, X } from "lucide-react";
 

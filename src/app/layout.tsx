@@ -1,3 +1,6 @@
+/**
+ * @file Root layout: global CSS, fonts, SEO metadata (Open Graph/Twitter/JSON-LD), theme bootstrap and the wallet provider.
+ */
 import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";

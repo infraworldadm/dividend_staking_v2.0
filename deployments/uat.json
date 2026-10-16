@@ -1,0 +1,51 @@
+{
+  "$comment": "Single source of truth for INFRA UAT deployments. Update this file after every deploy/upgrade (and record the tx hash in history). The website reads it via src/lib/web3/addresses.ts.",
+  "network": {
+    "name": "INFRA UAT",
+    "chainId": 15324,
+    "rpcUrl": "https://uat.infraworld.org/",
+    "explorerUrl": "https://uat.scan.infraworld.org/",
+    "nativeSymbol": "reAED",
+    "nativeDecimals": 18
+  },
+  "contracts": {
+    "stakingPool": {
+      "name": "InfraStakingPool",
+      "kind": "UUPS proxy (ERC-1967)",
+      "proxy": "0xeEb712B20b9d4AEF535a781e1222FD1174fFa919",
+      "implementation": null,
+      "source": "contracts/src/InfraStakingPool.sol",
+      "status": "pending-upgrade",
+      "notes": "Proxy currently runs the legacy StakingPoolFromDividendPoolV2. Upgrade with upgradeToAndCall(newImpl, upgradeToMonthlyPool(dividendPool, adminWallet)) — see contracts/DEPLOY.md."
+    },
+    "dividendPool": {
+      "name": "DividendPoolNativeV2",
+      "kind": "UUPS proxy (ERC-1967)",
+      "proxy": "0xCD938d217a31C85B9041a218A14015E289D61aC0",
+      "implementation": "0x09589dFB8753B4199455c1A5D805314FD8d29Eca",
+      "source": "contracts/src/DividendPoolNativeV2.sol",
+      "status": "pending-upgrade",
+      "notes": "Needs the new implementation that adds pullForStaking() (automatic monthly payouts). No storage changes."
+    }
+  },
+  "wallets": {
+    "adminWallet": {
+      "address": "0xCFc93FB43F17F99EaCa411be595B727501987E95",
+      "role": "Receives expired (unclaimed after 30 days) rewards and recovered surplus."
+    },
+    "keeper": {
+      "address": null,
+      "role": "Gas-only wallet used by the daily Vercel Cron to call poke(). Holds no rights."
+    }
+  },
+  "upgradeCalldata": {
+    "stakingPool.upgradeToMonthlyPool": "0xb08e0409000000000000000000000000cd938d217a31c85b9041a218a14015e289d61ac0000000000000000000000000cfc93fb43f17f99eaca411be595b727501987e95"
+  },
+  "history": [
+    {
+      "date": "2026-10-15",
+      "action": "Contracts finalized (monthly epochs, multi-position, auto-pull, auto-sweep). Awaiting on-chain upgrade.",
+      "txHashes": []
+    }
+  ]
+}

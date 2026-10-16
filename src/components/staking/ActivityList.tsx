@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Connected wallet's on-chain activity (stakes, claims, withdrawals) read from contract events.
+ */
 import { fmtDate } from "@/lib/cycles";
 import { formatToken } from "@/lib/format";
 import type { ActivityItem } from "@/hooks/useActivity";

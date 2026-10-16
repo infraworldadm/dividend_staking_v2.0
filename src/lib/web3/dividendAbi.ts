@@ -1,3 +1,6 @@
+/**
+ * @file ABI of DividendPoolNativeV2 (subset used by the site/admin).
+ */
 // Subset of DividendPoolNativeV2 used by the admin page.
 import type { Abi } from "viem";
 

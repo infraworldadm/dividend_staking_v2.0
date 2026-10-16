@@ -1,3 +1,6 @@
+/**
+ * @file Web app manifest (installable PWA name, colors and icons).
+ */
 import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {

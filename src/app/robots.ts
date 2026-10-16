@@ -1,3 +1,6 @@
+/**
+ * @file robots.txt — allows the public site, blocks /admin, /api and /wallet-debug from indexing.
+ */
 import type { MetadataRoute } from "next";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://dividend-staking-v2-0.vercel.app";

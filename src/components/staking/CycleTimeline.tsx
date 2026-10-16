@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Monthly cycle overview: previous claim window, current earning month, next month, and cycle history table.
+ */
 import { useEffect, useState } from "react";
 import { CLAIM_BUFFER_DAYS, cycleHistory, cyclesAround, epochIdOf, fmtDate, fmtEnd, statusOf, type CycleStatus } from "@/lib/cycles";
 import { formatCountdown, formatToken } from "@/lib/format";

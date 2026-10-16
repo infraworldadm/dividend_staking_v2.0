@@ -1,3 +1,6 @@
+/**
+ * @file Shared TypeScript types for contract return values.
+ */
 /** InfraStakingPool.positionsOf(address)[i] */
 export type StakePosition = {
   amount: bigint;

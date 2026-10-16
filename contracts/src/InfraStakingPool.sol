@@ -60,9 +60,13 @@ interface IDividendPoolPull {
  *
  *  Owner (MUST be a multisig, e.g. Gnosis Safe)
  *    - Upgrade the contract (UUPS).
- *    - setDividendPool(), setAdminWallet(), fundEpoch().
+ *    - setDividendPool(), setAdminWallet(), setAllowedPeriod(), setAutoPull(), fundEpoch().
  *    - ownerWithdrawRewards(): reward funds only, never stakers' principal.
  *    - emergencyWithdraw(): ANY amount, including principal.
+ *
+ *  Keeper / automation
+ *    - poke(): public; runs the monthly automation (weights, auto-pull, auto-sweep).
+ *    - needsPoke(): view for keepers — true when poke() would do something.
  *
  *  Scalability
  *    No loops over users. Per-month totals come from activeAmount,

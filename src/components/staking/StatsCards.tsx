@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Row of headline stat cards (wallet balance, total staked, your stake, cycle countdown).
+ */
 import type { ReactNode } from "react";
 import { Hourglass, Landmark, Scale, Wallet } from "lucide-react";
 import { Num } from "@/components/motion/Num";

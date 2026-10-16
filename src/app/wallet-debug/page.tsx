@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Diagnostic page (`/wallet-debug`): shows what wallet provider a browser/in-app browser injects. Not indexed.
+ */
 import { useEffect, useState } from "react";
 
 /** Diagnostic page: open inside the INFRA Wallet app browser and screenshot the result. */

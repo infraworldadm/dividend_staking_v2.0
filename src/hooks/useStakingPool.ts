@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Data layer for the staking page: batched contract reads (pool, account, positions, rewards, epochs), live dividend-pool balance, and write helpers (stake, claim, withdraw).
+ */
 import { useMemo } from "react";
 import { parseEther } from "viem";
 import { useAccount, useBalance, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
@@ -20,19 +23,20 @@ export function useStakingPool() {
   const prevId = BigInt(epochIdOf(around.previous));
   const nextSeconds = BigInt(around.next.end - around.next.start);
 
+  // One multicall for the whole page. Index comments must stay in sync with the `data?.[i]` reads below.
   const { data, isLoading, refetch } = useReadContracts({
     contracts: [
-      { ...base, functionName: "totalStaked" },
-      { ...base, functionName: "currentEpoch" },
-      { ...base, functionName: "dividendPool" },
-      { ...base, functionName: "totalRewardsClaimed" },
-      { ...base, functionName: "accounts", args: [who] },
-      { ...base, functionName: "pendingRewards", args: [who] },
-      { ...base, functionName: "currentEpochShare", args: [who] },
-      { ...base, functionName: "positionsOf", args: [who] },
-      { ...base, functionName: "totalWeight", args: [nextId] },
-      { ...base, functionName: "epochReward", args: [prevId] },
-      { ...base, functionName: "allowedPeriods" },
+      { ...base, functionName: "totalStaked" }, // [0] principal locked across all wallets
+      { ...base, functionName: "currentEpoch" }, // [1] running month id (year*12 + month-1)
+      { ...base, functionName: "dividendPool" }, // [2] DividendPoolNativeV2 address
+      { ...base, functionName: "totalRewardsClaimed" }, // [3] lifetime rewards paid out
+      { ...base, functionName: "accounts", args: [who] }, // [4] wallet totals: staked, claimed, expired, next position id
+      { ...base, functionName: "pendingRewards", args: [who] }, // [5] claimable now + earliest claim deadline
+      { ...base, functionName: "currentEpochShare", args: [who] }, // [6] running month: weight, total weight, reward so far
+      { ...base, functionName: "positionsOf", args: [who] }, // [7] open positions of the wallet
+      { ...base, functionName: "totalWeight", args: [nextId] }, // [8] total weight already joining next month
+      { ...base, functionName: "epochReward", args: [prevId] }, // [9] last closed month reward pool
+      { ...base, functionName: "allowedPeriods" }, // [10] lock options (months) offered by the contract
     ],
     query: { enabled: isStakingConfigured, refetchInterval: 10_000 },
   });

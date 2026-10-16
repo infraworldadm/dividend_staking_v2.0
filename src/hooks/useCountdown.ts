@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Ticking countdown hook (seconds until a target unix time).
+ */
 import { useEffect, useMemo, useState } from "react";
 
 export function useCountdown(targetTimestamp: number) {

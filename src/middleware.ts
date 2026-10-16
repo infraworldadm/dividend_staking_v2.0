@@ -1,3 +1,6 @@
+/**
+ * @file Edge middleware guarding /admin: redirects to /admin/login unless a valid signed session cookie is present.
+ */
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, readSession } from "@/lib/adminAuth";
 

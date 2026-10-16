@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Scroll-reveal motion: animates elements marked data-rv / data-rv-kids as they enter the viewport.
+ */
 import { useEffect } from "react";
 
 /**

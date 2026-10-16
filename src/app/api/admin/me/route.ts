@@ -1,3 +1,6 @@
+/**
+ * @file GET /api/admin/me — returns the logged-in operator's username (or null).
+ */
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, readSession } from "@/lib/adminAuth";

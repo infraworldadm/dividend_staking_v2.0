@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Animated success overlay shown after stake / claim / withdraw transactions confirm.
+ */
 import { useEffect } from "react";
 
 export type SuccessKind = "stake" | "withdraw" | "claim";

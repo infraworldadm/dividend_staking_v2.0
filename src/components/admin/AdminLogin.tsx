@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Username/password form for the admin console; posts to /api/admin/login.
+ */
 import { useState } from "react";
 import { ArrowRight, Lock } from "lucide-react";
 

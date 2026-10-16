@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Light/dark theme toggle (default light) and the inline script that applies the saved theme before paint.
+ */
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 

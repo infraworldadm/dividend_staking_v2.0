@@ -1,3 +1,6 @@
+/**
+ * @file Formatting helpers for token amounts, percentages and countdowns.
+ */
 import { formatEther } from "viem";
 
 export function formatToken(value: bigint | undefined, digits = 2) {

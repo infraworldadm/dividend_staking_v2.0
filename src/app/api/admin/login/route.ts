@@ -1,3 +1,6 @@
+/**
+ * @file POST /api/admin/login — verifies operator credentials (env ADMIN_USERS) and sets a signed, httpOnly session cookie.
+ */
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE, SESSION_HOURS, checkCredentials, createSession, isAdminLoginConfigured } from "@/lib/adminAuth";
 

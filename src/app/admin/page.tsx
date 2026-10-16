@@ -1,3 +1,6 @@
+/**
+ * @file Admin analytics route (`/admin`). Protected by `src/middleware.ts` (username/password session).
+ */
 import type { Metadata } from "next";
 import { ClientOnlyAdmin } from "@/components/admin/ClientOnlyAdmin";
 

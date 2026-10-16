@@ -1,3 +1,6 @@
+/**
+ * @file wagmi + RainbowKit configuration: chain, wallet list (INFRA Wallet first) and WalletConnect project id.
+ */
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import {
   coinbaseWallet,

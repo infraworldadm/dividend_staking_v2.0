@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * @file Stake form: amount, lock period, earning months, monthly-claim schedule, projection and terms.
+ */
 import { parseEther } from "viem";
 import { cycleAt, cyclesAround, fmtDate, CLAIM_BUFFER_DAYS } from "@/lib/cycles";
 import { formatToken } from "@/lib/format";
